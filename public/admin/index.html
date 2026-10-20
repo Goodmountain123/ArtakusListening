@@ -122,7 +122,7 @@ label{display:block;font-size:11px;color:var(--mut);margin-bottom:4px}
 .pop .types{display:flex;gap:4px;flex-wrap:wrap}
 .pop .types button{font-size:11px;padding:3px 7px;font-weight:700}
 .pop .types button.on{color:#111}
-.pop .lead{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
+.pop .lead{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);flex-wrap:wrap}
 .pop .lead input{width:58px}
 .pop label{margin:0}
 .pop .emo button{padding:3px 6px;font-size:16px;line-height:1}
@@ -956,7 +956,7 @@ function screenTrack(t){
     img:t.img?`/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}`:ytThumb(t.id),
     session:s?{num:state.sessions.indexOf(s)+1,name:s.name,desc:s.desc}:null,
     lyrics:lyrLines(t).filter(l=>l.text&&l.t!=null).map(l=>({text:l.text,t:l.t})).sort((a,b)=>a.t-b.t),
-    cues:t.cues.filter(showsOverlay).map(c=>({t:c.t,lead:cueLead(t,c),beat:cueBeat(t,c),hold:cueHold(t,c),type:c.type==='REVEAL'?'':c.type,cd:c.cd||'',msg:c.msg||'',emoji:c.emoji||'',burst:c.burst||24})),
+    cues:t.cues.filter(showsOverlay).map(c=>({t:c.t,lead:cueLead(t,c),beat:(cueBeat(t,c)||1)*cueStep(c),hold:cueHold(t,c),type:c.type==='REVEAL'?'':c.type,cd:c.cd||'',msg:c.msg||'',emoji:c.emoji||'',burst:c.burst||24})),
     marks:t.cues.map(c=>c.t),reveal:revealAt(t),bg:t.bg||'',
     dur:tlDur(t)||0};
 }
@@ -973,7 +973,8 @@ $('#screenBtn').onclick=()=>{const w=window.open('/screen/','lp-screen','popup,w
 // 큐마다 BPM을 따로 줄 수 있고, 없으면 곡 BPM. 둘 다 없으면 초 단위로 센다
 const cueBeat=(t,c)=>{const b=+(c.bpm||t.bpm);return b>0?60/b:0;};
 const cueLead=(t,c)=>{const bt=cueBeat(t,c);return bt?(c.beats??4)*bt:(c.lead??5);};
-const cueCount=(t,c,now)=>Math.ceil((c.t-now-1e-6)/(cueBeat(t,c)||1));
+const cueStep=c=>Math.max(1,Math.round(c.step||1));   // 몇 박(BPM 없으면 몇 초)마다 한 번씩 셀지
+const cueCount=(t,c,now)=>Math.ceil((c.t-now-1e-6)/((cueBeat(t,c)||1)*cueStep(c)));
 let taps=[],tapSong=[];
 // 곡 재생 중에 탭하면 곡 시간도 기록 → 박이 곡의 어디에 떨어지는지(격자 위치)를 구한다
 // 모든 탭을 지나는 가장 잘 맞는 직선: 기울기 = 박 길이, 절편 = 박 위치 (한두 번 삐끗해도 덜 흔들림)
@@ -1030,7 +1031,7 @@ function renderTimeline(t){
   t.cues.forEach((c,j)=>{const col=TCOL[c.type]||'#fff';
     const ld=cueLead(t,c),bt=cueBeat(t,c);
     h+=`<div class="leadw" style="left:${pct(c.t-ld)};width:${Math.min(ld,c.t)/D*100}%;background:${col}"></div>`;
-    if(bt)for(let i=1;i<=(c.beats??4);i++)h+=`<div class="btk" style="left:${pct(c.t-i*bt)}"></div>`;
+    if(bt){const u=bt*cueStep(c);for(let x=c.t-u;x>=c.t-ld-1e-6;x-=u)h+=`<div class="btk" style="left:${pct(x)}"></div>`;}
     h+=`<div class="mk${c===editCue?' sel':''}" data-mk="${j}" style="left:${pct(c.t)};background:${col}"><span style="background:${col}">${c.emoji?esc(c.emoji)+' ':''}${esc(c.msg||tlabel(c.type))}</span></div>`;});
   lane.innerHTML=h;
 }
@@ -1039,7 +1040,7 @@ function renderCues(t){
   $('#cueCount').textContent=t.cues.length;
   tb.innerHTML=t.cues.length?t.cues.map((c,j)=>`<tr data-j="${j}">
     <td><input class="sm" data-c="t" value="${fmt(c.t)}"></td>
-    <td style="white-space:nowrap">${cueBeat(t,c)?`<input class="xs" type="number" min="1" step="1" data-c="beats" value="${c.beats??4}"> 박`:`<input class="xs" type="number" min="0" step="0.5" data-c="lead" value="${c.lead??5}"> 초`}</td>
+    <td style="white-space:nowrap">${cueBeat(t,c)?`<input class="xs" type="number" min="1" step="1" data-c="beats" value="${c.beats??4}"> 박 / <input class="xs" style="width:44px" type="number" min="1" step="1" data-c="step" value="${cueStep(c)}">박마다`:`<input class="xs" type="number" min="0" step="0.5" data-c="lead" value="${c.lead??5}"> 초 / <input class="xs" style="width:44px" type="number" min="1" step="1" data-c="step" value="${cueStep(c)}">초마다`}</td>
     <td><select data-c="type">${TYPES.map(y=>`<option value="${y}" ${y===c.type?'selected':''}>${tlabel(y)}</option>`).join('')}</select></td>
     <td><input data-c="cd" value="${esc(c.cd||'')}" placeholder="카운트다운 문구"></td>
     <td><input data-c="msg" value="${esc(c.msg||'')}" placeholder="큐 문구"></td>
@@ -1058,8 +1059,8 @@ function openPop(t,c){
   pop.querySelector('[data-pop=burst]').value=c.burst||24;
   paintEmo(c);
   $('#popLead').innerHTML=t.bpm||c.bpm
-    ?`<input data-pop="beats" type="number" min="1" max="32" step="1" value="${c.beats??4}"> 박 전부터 · 이 큐 BPM <input class="bpmo" data-pop="bpm" type="number" step="0.1" value="${c.bpm||''}" placeholder="${t.bpm||''}">`
-    :`<input data-pop="lead" type="number" min="0" step="0.5" value="${c.lead??5}"> 초 전부터 <span class="mut">(BPM을 넣으면 박 단위)</span>`;
+    ?`<input data-pop="beats" type="number" min="1" max="64" step="1" value="${c.beats??4}"> 박 전부터, <input data-pop="step" type="number" min="1" max="16" step="1" value="${cueStep(c)}"> 박마다 세기 · 이 큐 BPM <input class="bpmo" data-pop="bpm" type="number" step="0.1" value="${c.bpm||''}" placeholder="${t.bpm||''}">`
+    :`<input data-pop="lead" type="number" min="0" step="0.5" value="${c.lead??5}"> 초 전부터, <input data-pop="step" type="number" min="1" max="16" step="1" value="${cueStep(c)}"> 초마다 세기 <span class="mut">(BPM을 넣으면 박 단위)</span>`;
   $('#popHold').innerHTML=cueBeat(t,c)
     ?`큐 문구 <input data-pop="holdBeats" type="number" min="1" max="64" step="1" value="${c.holdBeats??2}"> 박 동안 띄우기`
     :`큐 문구 <input data-pop="hold" type="number" min="0.5" max="30" step="0.5" value="${c.hold??1.5}"> 초 동안 띄우기`;
@@ -1121,8 +1122,8 @@ mainEl.addEventListener('input',e=>{
   const k=e.target.dataset.k;
   if(k){t[k]=e.target.value;if(k==='title'||k==='artist')updateHeader();save();if(k!=='reason')pushTrackUpdate(t,1500);return;}
   const ck=e.target.dataset.c;
-  if(['msg','cd','lead','beats','hold','holdBeats'].includes(ck)){const c=t.cues[+e.target.closest('tr').dataset.j],v=e.target.value;
-    c[ck]=ck==='lead'?(+v||0):ck==='beats'?Math.max(1,Math.round(+v||4)):ck==='holdBeats'?Math.max(1,Math.round(+v||2)):ck==='hold'?Math.max(0.5,+v||1.5):v;renderTimeline(t);save();return;}
+  if(['msg','cd','lead','beats','step','hold','holdBeats'].includes(ck)){const c=t.cues[+e.target.closest('tr').dataset.j],v=e.target.value;
+    c[ck]=ck==='lead'?(+v||0):ck==='beats'?Math.max(1,Math.round(+v||4)):ck==='step'?Math.max(1,Math.round(+v||1)):ck==='holdBeats'?Math.max(1,Math.round(+v||2)):ck==='hold'?Math.max(0.5,+v||1.5):v;renderTimeline(t);save();return;}
   const pk=e.target.dataset.pop;
   if(pk&&editCue){
     if(pk==='msg')editCue.msg=e.target.value;
@@ -1131,6 +1132,7 @@ mainEl.addEventListener('input',e=>{
     if(pk==='burst')editCue.burst=Math.max(1,Math.min(200,Math.round(+e.target.value||24)));
     if(pk==='lead')editCue.lead=Math.max(0,+e.target.value||0);
     if(pk==='beats')editCue.beats=Math.max(1,Math.round(+e.target.value||4));
+    if(pk==='step')editCue.step=Math.max(1,Math.round(+e.target.value||1));
     if(pk==='holdBeats')editCue.holdBeats=Math.max(1,Math.round(+e.target.value||2));
     if(pk==='hold')editCue.hold=Math.max(0.5,+e.target.value||1.5);
     if(pk==='bpm'){const v=+e.target.value;if(v>0)editCue.bpm=v;else delete editCue.bpm;}
