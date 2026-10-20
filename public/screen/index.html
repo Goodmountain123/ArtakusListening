@@ -77,9 +77,14 @@ body.show-ctrl .ctrl{opacity:1}
 .tlb-mk{position:absolute;bottom:0;width:.42vw;min-width:4px;height:1.1vw;min-height:10px;margin-left:-.21vw;border-radius:.21vw .21vw 0 0;background:var(--acc)}
 .tlb-mk.past{opacity:.35}
 .upd{position:fixed;right:1.4vw;bottom:1.4vw;font-size:13px;background:rgba(245,184,74,.9);color:#111;border-radius:6px;padding:6px 10px;font-weight:600}
-.info.mystery .art{background:linear-gradient(135deg,#2a2b33,#15161b);object-position:-9999px}
+.info.mystery .art{background:#000;object-position:-9999px}
 .info .q{display:none}
-.info.mystery .q{display:grid;place-items:center;position:absolute;inset:0;font-size:4.5vw;font-weight:900;color:rgba(255,255,255,.75)}
+/* 곡 정보가 공개되는 순간 */
+@keyframes revealIn{from{opacity:0;transform:translateY(.6vw)}to{opacity:1;transform:none}}
+.info.revealing .art,.info.revealing .title,.info.revealing .sub,.info.revealing .notes,.info.revealing .cm{animation:revealIn 1.4s ease both}
+.info.revealing .title{animation-delay:.25s}.info.revealing .sub{animation-delay:.45s}
+.info.revealing .notes{animation-delay:.7s}.info.revealing .cm{animation-delay:.9s}
+.lyr.revealing{animation:revealIn 1.4s ease .5s both}
 .artbox{position:relative;flex:none}
 /* 큐가 터질 때 이모지 폭죽 */
 .fw{position:fixed;left:var(--x);top:var(--y);font-size:var(--sz);pointer-events:none;z-index:5;will-change:transform,opacity;
@@ -158,7 +163,7 @@ function renderInfo(){
   const t=track();
   $('#idle').hidden=!!t;$('#info').hidden=!t;
   if(!t){shownId=null;setBg(null);$('#lyr').hidden=true;return;}
-  const s=t.session,hid=isHidden();hiddenNow=hid;
+  const s=t.session,hid=isHidden(),wasHidden=hiddenNow&&shownId===t.id+'?';hiddenNow=hid;
   $('#info').classList.toggle('mystery',hid);
   $('#sess').textContent=s?`SESSION ${String(s.num).padStart(2,'0')} · ${s.name}`:'';
   if(hid){
@@ -171,6 +176,10 @@ function renderInfo(){
     $('#title').textContent=t.title||'';
     $('#sub').textContent=[t.artist,t.album,t.year].filter(Boolean).join(' · ');
     $('#notes').textContent=t.notes||'';$('#notes').hidden=!t.notes;
+  }
+  if(wasHidden&&!hid){   // 공개 순간: 천천히 나타나게
+    for(const el of [$('#info'),$('#lyr')]){el.classList.remove('revealing');void el.offsetWidth;el.classList.add('revealing');}
+    setTimeout(()=>{$('#info').classList.remove('revealing');$('#lyr').classList.remove('revealing');},2400);
   }
   const key=t.id+(hid?'?':'');
   if(key!==shownId){shownId=key;if(!hid&&t.id)loadComments(t.id);buildLyrics();}

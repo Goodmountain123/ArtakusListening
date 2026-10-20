@@ -746,7 +746,7 @@ function renderTrack(){
   if(opts.etab==='lyr'){renderLyricsTab(t,etabs);return;}
   if(opts.etab==='bg'){renderBgTab(t,etabs);return;}
   $('#trackBody').innerHTML=etabs+`
-  <section class="card"><h3>타임라인<em>아래 띠 클릭 = 큐포인트 추가 · 마커 끌기 = 위치 조정 · 위 눈금 클릭 = 그 위치로 이동 · M 키 = 지금 위치에 추가</em></h3>
+  <section class="card"><h3>타임라인<em>아래 띠 클릭 = 큐포인트 추가 · 마커 끌기 = 위치 조정 · Alt+끌기 = 복제 · 위 눈금 클릭 = 그 위치로 이동 · M 키 = 지금 위치에 추가</em></h3>
     <div class="bpmrow"><label style="margin:0">BPM</label><input data-bpm type="number" min="20" max="300" step="0.1" value="${t.bpm||''}" placeholder="없음">
       <button class="tap primary" data-tap title="곡을 들으며 박자에 맞춰 누르세요 (T 키)">탭 (T)</button><button data-bpmx="0.5" title="절반으로">½</button><button data-bpmx="2" title="두 배로">×2</button>
       <span id="tapInfo" title="옛날 라이브 녹음처럼 템포가 조금씩 흔들리는 곡은, 큐를 찍기 전에 그 부분 근처에서 다시 탭하면 그 자리에 격자가 다시 맞춰집니다">${hasGrid(t)?'박 격자 있음 — 큐가 박에 붙습니다 (템포가 흔들리는 곡은 큐 근처에서 다시 탭)':t.bpm?'곡을 재생하면서 탭하면 박 위치까지 맞춰요':'곡을 재생하면서 박자에 맞춰 4번 이상 탭하세요'}</span>
@@ -1097,7 +1097,13 @@ mainEl.addEventListener('pointerdown',e=>{
   const rect=$('#lane').getBoundingClientRect(),timeAt=x=>Math.max(0,Math.min(D,(x-rect.left)/rect.width*D));
   e.preventDefault();
   if(ruler){if(live()&&playerId===t.id)player.seekTo(timeAt(e.clientX),true);else status('이 곡을 먼저 재생하세요');return;}
-  if(mk){drag={c:t.cues[+mk.dataset.mk],el:mk,x0:e.clientX,moved:false,timeAt,D};mk.setPointerCapture(e.pointerId);return;}
+  if(mk){
+    let c=t.cues[+mk.dataset.mk],el=mk,dup=false;
+    if(e.altKey){   // Alt + 드래그: 같은 설정의 큐를 하나 더 만들어 끌기
+      const copy=JSON.parse(JSON.stringify(c));t.cues.push(copy);renderTimeline(t);
+      el=$(`#lane .mk[data-mk="${t.cues.indexOf(copy)}"]`);c=copy;dup=true;
+    }
+    drag={c,el,x0:e.clientX,moved:false,timeAt,D,dup};el.setPointerCapture?.(e.pointerId);return;}
   addCueAt(t,snapT(t,timeAt(e.clientX)),true);
 });
 window.addEventListener('pointermove',e=>{
@@ -1113,7 +1119,8 @@ window.addEventListener('pointerup',()=>{
     else if(playerId===t.id&&live())player.seekTo(Math.max(0,d.c.t-1),true);
     return;
   }
-  if(d.moved){sortCues(t);refreshCues(t);if(editCue===d.c)openPop(t,d.c);}
+  if(d.dup&&!d.moved){t.cues=t.cues.filter(x=>x!==d.c);renderTimeline(t);return;}   // 끌지 않았으면 복제 취소
+  if(d.moved){sortCues(t);refreshCues(t);if(d.dup)status('큐를 복제했습니다');if(editCue===d.c)openPop(t,d.c);}
   else openPop(t,d.c);
 });
 
