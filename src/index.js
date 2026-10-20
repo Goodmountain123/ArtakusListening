@@ -213,7 +213,15 @@ export class LiveRoom extends DurableObject {
 
     // ---------- 관리자: 곡 공개 ----------
     if (url.pathname === "/api/now" && method === "POST") {
-      const track = pickTrack(await request.json());
+      const body = await request.json();
+      // 곡 정보 공개 전: 지금 곡이 재생 중이라는 것만 알리고, 제목 등은 보내지 않는다
+      if (body.mystery) {
+        const state = await this.getState();
+        state.now = { mystery: true, sid: str(body.sid, 40), index: Number(body.index) || 0 };
+        await this.setState(state);
+        return Response.json({ ok: true, listeners: this.ctx.getWebSockets().length });
+      }
+      const track = pickTrack(body);
       if (!track.id) return new Response("track id required", { status: 400 });
       const state = await this.getState();
       state.now = track;

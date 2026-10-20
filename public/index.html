@@ -64,6 +64,8 @@ header h1{font-size:12px;letter-spacing:.18em;margin:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.disc{animation:none}}
 .now .head{text-align:center}
+.now.mystery .disc{background:conic-gradient(from 0deg,#2a2b33,#3a2a2c,#2a2b33,#24303a,#2a2b33);display:grid;place-items:center}
+.now.mystery .mq{font-size:64px;font-weight:900;color:rgba(255,255,255,.7);animation:spin 9s linear infinite reverse}
 .cv{width:40px;height:40px;border-radius:6px;object-fit:cover;background:#202129;display:block}
 .p-head{display:flex;gap:14px;align-items:center}
 .p-head img{width:72px;height:72px;border-radius:10px;object-fit:cover;background:#202129;flex:none}
@@ -273,6 +275,17 @@ function renderStage(){
   if(key===stageKey)return;       // 바뀐 게 없으면 다시 그리지 않음 (입력 중인 댓글 보호)
   stageKey=key;
   if(!t){$('#stage').innerHTML='<section class="stage plain"><div class="waiting">곧 시작합니다</div></section>';return;}
+  const reactBar=`<div class="react"><span>노래에 반응해보세요!</span>${REACTS.map(([k,e])=>`<button data-react="${k}" aria-label="${k}">${e}</button>`).join('')}</div>`;
+  if(t.mystery){
+    // 곡은 흐르는 중, 정보는 아직 비공개
+    $('#stage').innerHTML=`<section class="stage${s?'':' plain'}">
+      ${s?`<div class="stage-head"><div class="stage-num">SESSION ${pad(ss.indexOf(s)+1)}</div><h2 class="stage-title">${esc(s.name)}</h2>${s.desc?`<p class="stage-desc">${esc(s.desc)}</p>`:''}</div>`:''}
+      <div class="now mystery"><div class="disc-wrap"><div class="disc"><span class="mq">?</span></div><div class="disc-sheen"></div><div class="disc-hub"></div></div>
+        <div class="head"><div class="label"><span class="eq"><b></b><b></b><b></b></span>NOW PLAYING</div>
+        <h2>지금 흐르는 이 곡은…</h2><div class="meta">곧 공개됩니다. 귀 기울여 맞혀보세요!</div></div></div>
+      ${reactBar}</section>`;
+    return;
+  }
   const meta=[t.artist,t.album,t.year].filter(Boolean).map(esc).join(' · ');
   $('#stage').innerHTML=`<section class="stage${s?'':' plain'}">
     ${s?`<div class="stage-head"><div class="stage-num">SESSION ${pad(ss.indexOf(s)+1)}</div><h2 class="stage-title">${esc(s.name)}</h2>${s.desc?`<p class="stage-desc">${esc(s.desc)}</p>`:''}</div>`:''}
@@ -281,7 +294,7 @@ function renderStage(){
       <div class="head"><div class="label"><span class="eq"><b></b><b></b><b></b></span>NOW PLAYING</div>
       <h2>${esc(t.title)}</h2><div class="meta">${meta}</div></div>
       ${detailBlock(t,'now')}</div>
-    <div class="react"><span>노래에 반응해보세요!</span>${REACTS.map(([k,e])=>`<button data-react="${k}" aria-label="${k}">${e}</button>`).join('')}</div></section>`;
+    ${reactBar}</section>`;
   if(!D[t.id])loadDetail(t.id);
 }
 

@@ -125,6 +125,9 @@ label{display:block;font-size:11px;color:var(--mut);margin-bottom:4px}
 .pop .lead{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
 .pop .lead input{width:58px}
 .pop label{margin:0}
+.pop .emo button{padding:3px 6px;font-size:16px;line-height:1}
+.pop .emo button.on{border-color:var(--acc);background:#3a2a22}
+.pop .emo input{padding:4px 6px}
 .pop .bpmo{width:64px}
 .bpmrow{display:flex;align-items:center;gap:6px;margin-bottom:12px;flex-wrap:wrap}
 .bpmrow input{width:84px;font-variant-numeric:tabular-nums}
@@ -269,8 +272,15 @@ dialog h3{margin:0 0 12px;font-size:15px}
 
 <script src="/vendor/Sortable.min.js"></script>
 <script>
-const TYPES=['DROP','SING','SHOUT','MOVE','HIGHLIGHT'];
-const TCOL={DROP:'#ff5a36',SING:'#4ea1ff',SHOUT:'#f5b84a',MOVE:'#3ecf8e',HIGHLIGHT:'#c58bff'};
+const TYPES=['DROP','SING','SHOUT','MOVE','HIGHLIGHT','REVEAL'];
+const TCOL={DROP:'#ff5a36',SING:'#4ea1ff',SHOUT:'#f5b84a',MOVE:'#3ecf8e',HIGHLIGHT:'#c58bff',REVEAL:'#ffffff'};
+const TLABEL={REVEAL:'곡 공개'};
+const tlabel=y=>TLABEL[y]||y;
+const EMOJIS=['❤️','🎉','👏','😄','💃'];
+// '곡 공개' 마커가 있으면 그 시점까지 참가자 앱·송출 화면에 곡 정보를 숨긴다
+const revealAt=t=>{const r=t.cues.filter(c=>c.type==='REVEAL').map(c=>c.t);return r.length?Math.min(...r):null;};
+// 화면에 띄울 게 있는 큐만 카운트다운 (문구 없는 '곡 공개'는 조용히 공개만)
+const showsOverlay=c=>c.type!=='REVEAL'||c.cd||c.msg||c.emoji;
 const DEFAULT_SESSIONS=['세로토닌 & 옥시토신','미드나잇 드라이브','움직여!','론리 시티 서울','축제의 시간'];
 const F=[['title','제목'],['artist','아티스트'],['album','앨범'],['year','발매연도'],
   ['notes','곡 해설','area'],['reason','선정 이유 (참가자에게 안 보임)','area'],['related','관련곡 (한 줄에 하나)','area']];
@@ -520,7 +530,7 @@ async function addUrl(){
 }
 
 /* ================= 메인 플레이어 ================= */
-let player=null,playerId=null,autoplayId=null,lastPub=null,advT=0;
+let player=null,playerId=null,autoplayId=null,lastPub=null,lastMyst=null,advT=0;
 const live=()=>player&&player!=='pending';
 const ptime=()=>live()&&player.getCurrentTime?player.getCurrentTime():null;
 const pstate=()=>live()&&player.getPlayerState?player.getPlayerState():-1;
@@ -544,7 +554,11 @@ async function showPlayer(id){
 function onPState(e){
   const t=trackOf(playerId);
   if(e.data===0&&opts.auto)advance(1,false);
-  if(e.data===1&&t&&lastPub!==t.id){lastPub=t.id;publish(t,true);}
+  if(e.data===1&&t&&lastPub!==t.id){
+    const rv=revealAt(t);
+    if(rv!=null&&(ptime()??0)<rv){if(lastMyst!==t.id){lastMyst=t.id;publishMystery(t);}}
+    else{lastPub=t.id;publish(t,true);}
+  }
   if(e.data===1||e.data===0)renderSide();
 }
 // 이웃 곡: 자동 진행은 같은 세션 안에서만, 버튼은 세션을 넘어서
@@ -583,6 +597,12 @@ async function postProgram(force){
   await api('/api/program','POST',programData());lastProgram=p;
 }
 const publicTrack=t=>({...t,title:t.title||t.ytTitle||'(제목 없음)',artist:t.artist||t.ytChannel||'',sid:sessionOf(t.id)?.id||'',index:posOf(t.id),img:t.img||''});
+async function publishMystery(t){
+  if(!token())return;
+  try{await postProgram();await api('/api/now','POST',{mystery:true,sid:sessionOf(t.id)?.id||'',index:posOf(t.id)});
+    status(`재생 시작 → "${t.title||t.ytTitle}" 곡 정보는 ${fmtD(revealAt(t))}에 공개됩니다`);refreshLive();}
+  catch(e){status('공개 실패: '+e.message);lastMyst=null;}
+}
 async function publish(t,auto){
   if(!token()){if(auto)status('관리자 토큰이 없어 참가자 앱에 공개되지 않았습니다');else status('관리자 토큰을 입력하세요');return;}
   try{
@@ -736,9 +756,11 @@ function renderTrack(){
     <div class="tl" id="tl"><div class="ruler" id="ruler"></div><div class="lane" id="lane"></div><div class="ph" id="ph" hidden></div>
       <div class="pop" id="pop" hidden>
         <div class="row"><input data-pop="t"><button data-pp="seek" title="카운트다운 2초 전부터 재생">▶ 들어보기</button><span style="flex:1"></span><button data-pp="del">삭제</button></div>
-        <div class="types">${TYPES.map(y=>`<button data-ptype="${y}" style="border-color:${TCOL[y]}">${y}</button>`).join('')}</div>
+        <div class="types">${TYPES.map(y=>`<button data-ptype="${y}" style="border-color:${TCOL[y]}">${tlabel(y)}</button>`).join('')}</div>
         <label>카운트다운 문구 <span class="mut">(숫자와 함께)</span><input data-pop="cd" placeholder="예: 후렴 준비!"></label>
         <label>큐 문구 <span class="mut">(그 순간)</span><input data-pop="msg" placeholder="예: 다 같이!"></label>
+        <div><label style="margin-bottom:4px">이모지 효과 <span class="mut">(그 순간 송출 화면에서 떠오름)</span></label>
+          <div class="row emo">${EMOJIS.map(x=>`<button data-pemo="${x}">${x}</button>`).join('')}<input data-pop="emoji" placeholder="직접" style="width:64px;text-align:center"><input data-pop="burst" type="number" min="1" max="200" title="개수" style="width:58px"><span class="mut" style="font-size:11px">개</span></div></div>
         <div class="row"><span class="lead" id="popLead"></span></div>
         <div class="row"><span class="lead" id="popHold"></span><span style="flex:1"></span><button class="primary" data-pp="ok">확인</button></div>
       </div>
@@ -934,7 +956,8 @@ function screenTrack(t){
     img:t.img?`/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}`:ytThumb(t.id),
     session:s?{num:state.sessions.indexOf(s)+1,name:s.name,desc:s.desc}:null,
     lyrics:lyrLines(t).filter(l=>l.text&&l.t!=null).map(l=>({text:l.text,t:l.t})).sort((a,b)=>a.t-b.t),
-    cues:t.cues.map(c=>({t:c.t,lead:cueLead(t,c),beat:cueBeat(t,c),hold:cueHold(t,c),type:c.type,cd:c.cd||'',msg:c.msg||''})),bg:t.bg||'',
+    cues:t.cues.filter(showsOverlay).map(c=>({t:c.t,lead:cueLead(t,c),beat:cueBeat(t,c),hold:cueHold(t,c),type:c.type==='REVEAL'?'':c.type,cd:c.cd||'',msg:c.msg||'',emoji:c.emoji||'',burst:c.burst||24})),
+    marks:t.cues.map(c=>c.t),reveal:revealAt(t),bg:t.bg||'',
     dur:tlDur(t)||0};
 }
 function postScreen(force){
@@ -1008,7 +1031,7 @@ function renderTimeline(t){
     const ld=cueLead(t,c),bt=cueBeat(t,c);
     h+=`<div class="leadw" style="left:${pct(c.t-ld)};width:${Math.min(ld,c.t)/D*100}%;background:${col}"></div>`;
     if(bt)for(let i=1;i<=(c.beats??4);i++)h+=`<div class="btk" style="left:${pct(c.t-i*bt)}"></div>`;
-    h+=`<div class="mk${c===editCue?' sel':''}" data-mk="${j}" style="left:${pct(c.t)};background:${col}"><span style="background:${col}">${esc(c.msg||c.type)}</span></div>`;});
+    h+=`<div class="mk${c===editCue?' sel':''}" data-mk="${j}" style="left:${pct(c.t)};background:${col}"><span style="background:${col}">${c.emoji?esc(c.emoji)+' ':''}${esc(c.msg||tlabel(c.type))}</span></div>`;});
   lane.innerHTML=h;
 }
 function renderCues(t){
@@ -1017,7 +1040,7 @@ function renderCues(t){
   tb.innerHTML=t.cues.length?t.cues.map((c,j)=>`<tr data-j="${j}">
     <td><input class="sm" data-c="t" value="${fmt(c.t)}"></td>
     <td style="white-space:nowrap">${cueBeat(t,c)?`<input class="xs" type="number" min="1" step="1" data-c="beats" value="${c.beats??4}"> 박`:`<input class="xs" type="number" min="0" step="0.5" data-c="lead" value="${c.lead??5}"> 초`}</td>
-    <td><select data-c="type">${TYPES.map(y=>`<option ${y===c.type?'selected':''}>${y}</option>`).join('')}</select></td>
+    <td><select data-c="type">${TYPES.map(y=>`<option value="${y}" ${y===c.type?'selected':''}>${tlabel(y)}</option>`).join('')}</select></td>
     <td><input data-c="cd" value="${esc(c.cd||'')}" placeholder="카운트다운 문구"></td>
     <td><input data-c="msg" value="${esc(c.msg||'')}" placeholder="큐 문구"></td>
     <td style="white-space:nowrap">${cueBeat(t,c)?`<input class="xs" type="number" min="1" step="1" data-c="holdBeats" value="${c.holdBeats??2}"> 박`:`<input class="xs" type="number" min="0.5" step="0.5" data-c="hold" value="${c.hold??1.5}"> 초`}</td>
@@ -1031,6 +1054,9 @@ function openPop(t,c){
   pop.querySelector('[data-pop=t]').value=fmt(c.t);
   pop.querySelector('[data-pop=msg]').value=c.msg||'';
   pop.querySelector('[data-pop=cd]').value=c.cd||'';
+  pop.querySelector('[data-pop=emoji]').value=c.emoji&&!EMOJIS.includes(c.emoji)?c.emoji:'';
+  pop.querySelector('[data-pop=burst]').value=c.burst||24;
+  paintEmo(c);
   $('#popLead').innerHTML=t.bpm||c.bpm
     ?`<input data-pop="beats" type="number" min="1" max="32" step="1" value="${c.beats??4}"> 박 전부터 · 이 큐 BPM <input class="bpmo" data-pop="bpm" type="number" step="0.1" value="${c.bpm||''}" placeholder="${t.bpm||''}">`
     :`<input data-pop="lead" type="number" min="0" step="0.5" value="${c.lead??5}"> 초 전부터 <span class="mut">(BPM을 넣으면 박 단위)</span>`;
@@ -1041,6 +1067,7 @@ function openPop(t,c){
   const w=$('#tl').clientWidth;pop.style.left=Math.min(w-150,Math.max(150,c.t/D*w))+'px';
   renderTimeline(t);setTimeout(()=>pop.querySelector('[data-pop=cd]').focus(),0);
 }
+function paintEmo(c){document.querySelectorAll('#pop [data-pemo]').forEach(b=>b.classList.toggle('on',b.dataset.pemo===c.emoji));}
 function paintTypes(c){document.querySelectorAll('#pop [data-ptype]').forEach(b=>{const on=b.dataset.ptype===c.type;b.classList.toggle('on',on);b.style.background=on?TCOL[b.dataset.ptype]:'';});}
 function closePop(){if(!editCue)return;editCue=null;const p=$('#pop');if(p)p.hidden=true;const t=trackOf(cur());if(t)renderTimeline(t);}
 function addCueAt(t,time,open){
@@ -1100,6 +1127,8 @@ mainEl.addEventListener('input',e=>{
   if(pk&&editCue){
     if(pk==='msg')editCue.msg=e.target.value;
     if(pk==='cd')editCue.cd=e.target.value;
+    if(pk==='emoji'){const v=e.target.value.trim();if(v)editCue.emoji=v;else delete editCue.emoji;paintEmo(editCue);}
+    if(pk==='burst')editCue.burst=Math.max(1,Math.min(200,Math.round(+e.target.value||24)));
     if(pk==='lead')editCue.lead=Math.max(0,+e.target.value||0);
     if(pk==='beats')editCue.beats=Math.max(1,Math.round(+e.target.value||4));
     if(pk==='holdBeats')editCue.holdBeats=Math.max(1,Math.round(+e.target.value||2));
@@ -1165,6 +1194,8 @@ mainEl.addEventListener('click',e=>{
     return;
   }
   if(b.dataset.set){if(playerId!==t.id)return status('이 곡을 먼저 재생하세요');const now=ptime();if(now==null)return;t[b.dataset.set]=+now.toFixed(1);fillTC(t);renderTimeline(t);save();return;}
+  if(b.dataset.pemo&&editCue){editCue.emoji=editCue.emoji===b.dataset.pemo?undefined:b.dataset.pemo;if(!editCue.emoji)delete editCue.emoji;
+    $('#pop [data-pop=emoji]').value='';paintEmo(editCue);refreshCues(t);return;}
   if(b.dataset.ptype&&editCue){editCue.type=lastType=b.dataset.ptype;paintTypes(editCue);refreshCues(t);return;}
   if(b.dataset.pp&&editCue){
     const pp=b.dataset.pp,c=editCue;
@@ -1197,6 +1228,8 @@ setInterval(()=>{
   $('#elsewhere').hidden=!away;if(away)$('#elseTitle').textContent=pt.title||pt.ytTitle;
   // 곡 길이를 플레이어에서 알게 되면 저장
   if(pt&&!pt.duration&&live()){const d=player.getDuration();if(d){pt.duration=d;pt.durSrc='player';save();if(t===pt){fillTC(t);renderTimeline(t);renderLyrTimeline(t);}}}
+  // '곡 공개' 마커에 도달하면 공개
+  if(pt&&ps===1&&lastPub!==pt.id){const rv=revealAt(pt);if(rv!=null&&now>=rv){lastPub=pt.id;publish(pt,true);}}
   // 음악 끝 지점에 도달하면 다음 곡
   if(pt&&opts.auto&&ps===1&&pt.end!=null&&now>=pt.end)advance(1,false);
   // 플레이헤드 · 카운트다운
@@ -1209,8 +1242,8 @@ setInterval(()=>{
     document.querySelectorAll('.lp.cur').forEach(x=>{if(+x.dataset.li!==ci)x.classList.remove('cur');});
     if(ci>=0)document.querySelector(`.lp[data-li="${ci}"]`)?.classList.add('cur');
     document.querySelectorAll('.lmk').forEach(x=>x.classList.toggle('cur',+x.dataset.lmk===ci));}
-  const c=t.cues.find(c=>now>=c.t-cueLead(t,c)&&now<c.t+cueHold(t,c));
-  if(c){cd.hidden=false;cd.innerHTML=now<c.t?`<div><b>${cueCount(t,c,now)}</b><span>${esc(c.cd||c.type)}</span></div>`:`<b class="hit">${esc(c.msg||c.type)}</b>`;}
+  const c=t.cues.find(c=>showsOverlay(c)&&now>=c.t-cueLead(t,c)&&now<c.t+cueHold(t,c));
+  if(c){cd.hidden=false;cd.innerHTML=now<c.t?`<div><b>${cueCount(t,c,now)}</b><span>${esc(c.cd||tlabel(c.type))}</span></div>`:`<b class="hit">${c.emoji?esc(c.emoji)+' ':''}${esc(c.msg||(c.emoji?'':tlabel(c.type)))}</b>`;}
   else cd.hidden=true;
 },100);
 

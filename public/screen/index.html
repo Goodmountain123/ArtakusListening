@@ -77,6 +77,21 @@ body.show-ctrl .ctrl{opacity:1}
 .tlb-mk{position:absolute;bottom:0;width:.42vw;min-width:4px;height:1.1vw;min-height:10px;margin-left:-.21vw;border-radius:.21vw .21vw 0 0;background:var(--acc)}
 .tlb-mk.past{opacity:.35}
 .upd{position:fixed;right:1.4vw;bottom:1.4vw;font-size:13px;background:rgba(245,184,74,.9);color:#111;border-radius:6px;padding:6px 10px;font-weight:600}
+.info.mystery .art{background:linear-gradient(135deg,#2a2b33,#15161b);object-position:-9999px}
+.info .q{display:none}
+.info.mystery .q{display:grid;place-items:center;position:absolute;inset:0;font-size:4.5vw;font-weight:900;color:rgba(255,255,255,.75)}
+.artbox{position:relative;flex:none}
+/* 큐가 터질 때 이모지 폭죽 */
+.fw{position:fixed;left:var(--x);top:var(--y);font-size:var(--sz);pointer-events:none;z-index:5;will-change:transform,opacity;
+  animation:fw var(--d) cubic-bezier(.12,.75,.3,1) forwards;filter:drop-shadow(0 .2vw .5vw rgba(0,0,0,.35))}
+@keyframes fw{
+  0%{transform:translate(-50%,-50%) scale(.2) rotate(0);opacity:0}
+  8%{opacity:1}
+  55%{transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(1) rotate(var(--r));opacity:1}
+  100%{transform:translate(calc(-50% + var(--dx) * 1.18),calc(-50% + var(--dy) + var(--g))) scale(.75) rotate(calc(var(--r) * 1.7));opacity:0}}
+.fw-ring{position:fixed;left:var(--x);top:var(--y);width:2vw;height:2vw;border-radius:50%;pointer-events:none;z-index:4;
+  border:.25vw solid rgba(255,255,255,.85);box-shadow:0 0 2vw rgba(255,220,150,.8);animation:ring .7s ease-out forwards}
+@keyframes ring{from{transform:translate(-50%,-50%) scale(.2);opacity:1}to{transform:translate(-50%,-50%) scale(9);opacity:0}}
 .toast{position:fixed;left:50%;top:2vw;transform:translateX(-50%);background:rgba(0,0,0,.7);border-radius:8px;padding:10px 16px;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.on{opacity:1}
 .link{position:fixed;left:1.2vw;bottom:1vw;font-size:12px;color:rgba(255,255,255,.45)}
@@ -91,7 +106,7 @@ body.show-ctrl .ctrl{opacity:1}
 <div class="idle" id="idle"><div><h1>THE LISTENING PARTY</h1><p>곧 시작합니다</p></div></div>
 
 <div class="info" id="info" hidden>
-  <div class="row"><img class="art" id="art" alt=""><div>
+  <div class="row"><div class="artbox"><img class="art" id="art" alt=""><span class="q">?</span></div><div>
     <div class="sess" id="sess"></div><div class="title" id="title"></div><div class="sub" id="sub"></div></div></div>
   <p class="notes" id="notes"></p>
   <div class="cm" id="cm" hidden></div>
@@ -100,6 +115,7 @@ body.show-ctrl .ctrl{opacity:1}
 <div class="lyr" id="lyr" hidden><div class="lyr-in" id="lyrIn"></div></div>
 <div class="cd" id="cd" hidden></div>
 <div class="reacts" id="reacts"></div>
+<div id="fwBox"></div>
 <div class="tlb" id="tlb" hidden><div class="tlb-fill" id="tlbFill"></div><div id="tlbMarks"></div></div>
 
 <div class="ctrl"><span id="wsState">서버 연결 중…</span><span id="rxCount" hidden></span><span id="ofs"></span><button id="fsBtn">전체화면 (F)</button></div>
@@ -131,18 +147,35 @@ function nowT(){if(!clock.playing)return clock.t;return clock.t+(Date.now()-cloc
 
 /* ---------- 곡 정보 ---------- */
 let shownId=null;
+// '곡 공개' 마커 전이면 곡 정보를 가린다
+function isHidden(){
+  const t=track();if(!t)return false;
+  if(t.mystery)return true;
+  return linked()&&t.reveal!=null&&clock.id===t.id&&nowT()-offset<t.reveal;
+}
+let hiddenNow=false;
 function renderInfo(){
   const t=track();
   $('#idle').hidden=!!t;$('#info').hidden=!t;
   if(!t){shownId=null;setBg(null);$('#lyr').hidden=true;return;}
-  const s=t.session;
-  $('#art').src=t.img||'';
+  const s=t.session,hid=isHidden();hiddenNow=hid;
+  $('#info').classList.toggle('mystery',hid);
   $('#sess').textContent=s?`SESSION ${String(s.num).padStart(2,'0')} · ${s.name}`:'';
-  $('#title').textContent=t.title||'';
-  $('#sub').textContent=[t.artist,t.album,t.year].filter(Boolean).join(' · ');
-  $('#notes').textContent=t.notes||'';$('#notes').hidden=!t.notes;
-  if(t.id!==shownId){shownId=t.id;loadComments(t.id);buildLyrics();}
-  setBg(t);
+  if(hid){
+    $('#art').removeAttribute('src');
+    $('#title').textContent='지금 흐르는 이 곡은…';
+    $('#sub').textContent='곧 공개됩니다';
+    $('#notes').hidden=true;$('#cm').hidden=true;clearTimeout(cmTimer);
+  }else{
+    $('#art').src=t.img||'';
+    $('#title').textContent=t.title||'';
+    $('#sub').textContent=[t.artist,t.album,t.year].filter(Boolean).join(' · ');
+    $('#notes').textContent=t.notes||'';$('#notes').hidden=!t.notes;
+  }
+  const key=t.id+(hid?'?':'');
+  if(key!==shownId){shownId=key;if(!hid&&t.id)loadComments(t.id);buildLyrics();}
+  // 배경: 공개 전에는 앨범 이미지를 쓰지 않는다 (배경 영상은 그대로)
+  setBg(hid?{...t,img:''}:t);
 }
 
 /* ---------- 배경: 영상 → 없으면 앨범 이미지를 흐리게 ---------- */
@@ -195,9 +228,10 @@ let tlbKey='';
 function updateTimeline(now){
   const t=track(),D=t&&linked()&&t.dur;
   $('#tlb').hidden=!D;if(!D)return;
-  const key=t.id+':'+D+':'+JSON.stringify((t.cues||[]).map(c=>c.t));
+  const marks=t.marks||(t.cues||[]).map(c=>c.t);
+  const key=t.id+':'+D+':'+JSON.stringify(marks);
   if(key!==tlbKey){tlbKey=key;
-    $('#tlbMarks').innerHTML=(t.cues||[]).map(c=>`<div class="tlb-mk" data-t="${c.t}" style="left:${Math.min(100,c.t/D*100)}%"></div>`).join('');}
+    $('#tlbMarks').innerHTML=marks.map(x=>`<div class="tlb-mk" data-t="${x}" style="left:${Math.min(100,x/D*100)}%"></div>`).join('');}
   $('#tlbFill').style.width=Math.min(100,Math.max(0,now/D*100))+'%';
   document.querySelectorAll('.tlb-mk').forEach(el=>el.classList.toggle('past',+el.dataset.t<now));
 }
@@ -210,9 +244,38 @@ function updateCue(now){
   // BPM이 있으면 박 단위, 없으면 초 단위로 센다
   let key='',html='';
   if(c){if(now<c.t){const n=Math.ceil((c.t-now-1e-6)/(c.beat||1));key=c.t+':'+n;html=`<div><b>${n}</b><span>${esc(c.cd||c.type)}</span></div>`;}
-        else{key=c.t+':hit';html=`<b class="hit">${esc(c.msg||c.type)}</b>`;}}
+        else{key=c.t+':hit';const txt=c.msg||(c.emoji?'':c.type);html=txt||c.emoji?`<b class="hit">${c.emoji?esc(c.emoji)+' ':''}${esc(txt)}</b>`:'';if(!html)key='';}}
+  // 큐가 터지는 순간 한 번: 이모지 폭죽 (뒤로 돌려 다시 지나가면 또 터짐)
+  for(const q of cues){
+    const k=(t&&t.id)+':'+q.t;
+    if(now<q.t-0.3)fired.delete(k);
+    else if(now>=q.t&&now<q.t+0.5&&!fired.has(k)){fired.add(k);fireworks(q.emoji,q.burst||24);}
+  }
   if(key===cdKey)return;cdKey=key;
   $('#cd').hidden=!key;$('#cd').innerHTML=html;
+}
+const fired=new Set();
+const CUTE=['🎉','✨','💖','🌟','🥳','🎈','💫','😆','🧡','🎊','⭐','💕'];
+function fireworks(emo,count){
+  const box=$('#fwBox'),r=Math.random,bursts=count>=12?3:1,per=Math.ceil(count/bursts);
+  for(let b=0;b<bursts;b++)setTimeout(()=>{
+    const x=(18+r()*64).toFixed(1)+'%',y=(22+r()*30).toFixed(1)+'%';
+    const ring=document.createElement('div');ring.className='fw-ring';ring.style.setProperty('--x',x);ring.style.setProperty('--y',y);
+    box.appendChild(ring);setTimeout(()=>ring.remove(),800);
+    for(let i=0;i<per;i++){
+      const el=document.createElement('div');el.className='fw';
+      const ang=(i/per)*Math.PI*2+r()*0.5,dist=9+r()*14;
+      el.textContent=emo?(r()<0.82?emo:'✨'):CUTE[Math.floor(r()*CUTE.length)];
+      el.style.setProperty('--x',x);el.style.setProperty('--y',y);
+      el.style.setProperty('--dx',(Math.cos(ang)*dist).toFixed(2)+'vw');
+      el.style.setProperty('--dy',(Math.sin(ang)*dist*0.85).toFixed(2)+'vw');
+      el.style.setProperty('--g',(8+r()*10).toFixed(1)+'vw');
+      el.style.setProperty('--r',((r()-.5)*160).toFixed(0)+'deg');
+      el.style.setProperty('--sz',(1.6+r()*1.9).toFixed(2)+'vw');
+      el.style.setProperty('--d',(1.5+r()*0.9).toFixed(2)+'s');
+      box.appendChild(el);setTimeout(()=>el.remove(),2600);
+    }
+  },b*220);
 }
 
 /* ---------- 댓글 한 줄씩 ---------- */
@@ -259,7 +322,8 @@ function connect(){
     if(e.data==='pong')return;const m=JSON.parse(e.data);
     if(m.type==='state'){
       const n=m.now;
-      serverNow=n?{id:n.id,title:n.title,artist:n.artist,album:n.album,year:n.year,notes:n.notes,
+      serverNow=n&&n.mystery?{id:'',mystery:true,session:(()=>{const ss=m.program?.sessions||[],s=ss.find(x=>x.id===n.sid);return s?{num:ss.indexOf(s)+1,name:s.name,desc:s.desc}:null;})()}
+        :n?{id:n.id,title:n.title,artist:n.artist,album:n.album,year:n.year,notes:n.notes,
         img:n.img?`/img/${n.id}?v=${n.img}`:`https://i.ytimg.com/vi/${n.id}/hqdefault.jpg`,
         session:(()=>{const ss=m.program?.sessions||[],s=ss.find(x=>x.id===n.sid);return s?{num:ss.indexOf(s)+1,name:s.name,desc:s.desc}:null;})()}:null;
       if(!linked())renderInfo();
@@ -296,6 +360,7 @@ function frame(){
   const l=linked();
   if(l!==wasLinked){wasLinked=l;$('#link').hidden=l;shownId=null;renderInfo();}
   const t=track();
+  if(t&&isHidden()!==hiddenNow)renderInfo();
   if(t&&l&&clock.id===t.id){const now=nowT()-offset;updateLyrics(now);updateCue(now);updateTimeline(now);}
   else{updateCue(-1);$('#tlb').hidden=true;}
   requestAnimationFrame(frame);
