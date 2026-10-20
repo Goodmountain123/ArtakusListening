@@ -187,7 +187,7 @@ function updateLyrics(now){
 let cdKey='';
 function updateCue(now){
   const t=track(),cues=(t&&linked()&&t.cues)||[];
-  const c=cues.find(c=>now>=c.t-c.lead&&now<c.t+1.2);
+  const c=cues.find(c=>now>=c.t-c.lead&&now<c.t+(c.hold||1.2));
   // BPM이 있으면 박 단위, 없으면 초 단위로 센다
   let key='',html='';
   if(c){if(now<c.t){const n=Math.ceil((c.t-now-1e-6)/(c.beat||1));key=c.t+':'+n;html=`<div><b>${n}</b><span>${esc(c.cd||c.type)}</span></div>`;}

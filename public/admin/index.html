@@ -131,6 +131,9 @@ label{display:block;font-size:11px;color:var(--mut);margin-bottom:4px}
 .bpmrow .tap{min-width:92px;user-select:none;-webkit-user-select:none;touch-action:manipulation}
 .bpmrow .tap.hit{transform:scale(.94);filter:brightness(1.3)}
 #tapInfo{font-size:12px;color:var(--mut)}
+.gbeat{position:absolute;top:0;bottom:0;width:1px;background:rgba(255,255,255,.05);pointer-events:none}
+.gbar{background:rgba(255,255,255,.13)}
+.bpmrow .sep{width:1px;height:20px;background:var(--line);margin:0 4px}
 .btk{position:absolute;bottom:0;height:10px;width:1px;background:rgba(255,255,255,.35);pointer-events:none}
 .hint{color:var(--mut);font-size:12px;margin:8px 0 0}
 .etabs{display:flex;gap:4px;margin-top:14px;border-bottom:1px solid var(--line)}
@@ -311,7 +314,7 @@ function migrate(s){
 }
 let state=migrate(null);
 try{const s=localStorage.getItem(LS);if(s)state=migrate(JSON.parse(s));}catch(e){}
-let opts={auto:true,tab:'set'};
+let opts={auto:true,tab:'set',snap:true};
 try{Object.assign(opts,JSON.parse(localStorage.getItem(LS+'_opts')||'{}'));}catch(e){}
 const saveOpts=()=>{try{localStorage.setItem(LS+'_opts',JSON.stringify(opts));}catch(e){}};
 function persist(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}}
@@ -725,19 +728,23 @@ function renderTrack(){
   <section class="card"><h3>타임라인<em>아래 띠 클릭 = 큐포인트 추가 · 마커 끌기 = 위치 조정 · 위 눈금 클릭 = 그 위치로 이동 · M 키 = 지금 위치에 추가</em></h3>
     <div class="bpmrow"><label style="margin:0">BPM</label><input data-bpm type="number" min="20" max="300" step="0.1" value="${t.bpm||''}" placeholder="없음">
       <button class="tap primary" data-tap title="곡을 들으며 박자에 맞춰 누르세요 (T 키)">탭 (T)</button><button data-bpmx="0.5" title="절반으로">½</button><button data-bpmx="2" title="두 배로">×2</button>
-      <span id="tapInfo">${t.bpm?'BPM이 있으면 카운트다운을 박 단위로 셉니다':'곡을 들으며 박자에 맞춰 3번 이상 탭하세요'}</span></div>
+      <span id="tapInfo" title="옛날 라이브 녹음처럼 템포가 조금씩 흔들리는 곡은, 큐를 찍기 전에 그 부분 근처에서 다시 탭하면 그 자리에 격자가 다시 맞춰집니다">${hasGrid(t)?'박 격자 있음 — 큐가 박에 붙습니다 (템포가 흔들리는 곡은 큐 근처에서 다시 탭)':t.bpm?'곡을 재생하면서 탭하면 박 위치까지 맞춰요':'곡을 재생하면서 박자에 맞춰 4번 이상 탭하세요'}</span>
+      ${hasGrid(t)?`<span class="sep"></span><label class="tog"><input type="checkbox" id="optSnap" ${opts.snap?'checked':''}> 큐를 박에 붙이기</label>
+      <button data-gshift="-0.02" title="격자를 조금 앞으로">◀</button><button data-gshift="0.02" title="격자를 조금 뒤로">▶</button>
+      <button data-snapall title="이미 찍은 큐포인트를 가장 가까운 박으로 옮깁니다">큐 모두 박에 맞추기</button>`:''}</div>
     <div class="tl" id="tl"><div class="ruler" id="ruler"></div><div class="lane" id="lane"></div><div class="ph" id="ph" hidden></div>
       <div class="pop" id="pop" hidden>
         <div class="row"><input data-pop="t"><button data-pp="seek" title="카운트다운 2초 전부터 재생">▶ 들어보기</button><span style="flex:1"></span><button data-pp="del">삭제</button></div>
         <div class="types">${TYPES.map(y=>`<button data-ptype="${y}" style="border-color:${TCOL[y]}">${y}</button>`).join('')}</div>
         <label>카운트다운 문구 <span class="mut">(숫자와 함께)</span><input data-pop="cd" placeholder="예: 후렴 준비!"></label>
         <label>큐 문구 <span class="mut">(그 순간)</span><input data-pop="msg" placeholder="예: 다 같이!"></label>
-        <div class="row"><span class="lead" id="popLead"></span><span style="flex:1"></span><button class="primary" data-pp="ok">확인</button></div>
+        <div class="row"><span class="lead" id="popLead"></span></div>
+        <div class="row"><span class="lead" id="popHold"></span><span style="flex:1"></span><button class="primary" data-pp="ok">확인</button></div>
       </div>
     </div>
     <div class="tc" id="tcBox"></div>
     <details class="cuelist"><summary>큐포인트 목록 (<span id="cueCount">0</span>)</summary>
-      <table class="cues"><thead><tr><th>시점</th><th>리드</th><th>종류</th><th>카운트다운 문구</th><th>큐 문구</th><th></th></tr></thead><tbody id="cueRows"></tbody></table></details>
+      <table class="cues"><thead><tr><th>시점</th><th>리드</th><th>종류</th><th>카운트다운 문구</th><th>큐 문구</th><th>떠있는 시간</th><th></th></tr></thead><tbody id="cueRows"></tbody></table></details>
   </section>
   <section class="card" style="margin-top:14px"><h3>곡 정보</h3><div class="grid">
     <div class="full thumbrow"><div class="thumb" id="thumbBox"></div>
@@ -926,7 +933,7 @@ function screenTrack(t){
     img:t.img?`/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}`:ytThumb(t.id),
     session:s?{num:state.sessions.indexOf(s)+1,name:s.name,desc:s.desc}:null,
     lyrics:lyrLines(t).filter(l=>l.text&&l.t!=null).map(l=>({text:l.text,t:l.t})).sort((a,b)=>a.t-b.t),
-    cues:t.cues.map(c=>({t:c.t,lead:cueLead(t,c),beat:cueBeat(t,c),type:c.type,cd:c.cd||'',msg:c.msg||''})),bg:t.bg||''};
+    cues:t.cues.map(c=>({t:c.t,lead:cueLead(t,c),beat:cueBeat(t,c),hold:cueHold(t,c),type:c.type,cd:c.cd||'',msg:c.msg||''})),bg:t.bg||''};
 }
 function postScreen(force){
   if(!bc)return;
@@ -942,19 +949,40 @@ $('#screenBtn').onclick=()=>{const w=window.open('/screen/','lp-screen','popup,w
 const cueBeat=(t,c)=>{const b=+(c.bpm||t.bpm);return b>0?60/b:0;};
 const cueLead=(t,c)=>{const bt=cueBeat(t,c);return bt?(c.beats??4)*bt:(c.lead??5);};
 const cueCount=(t,c,now)=>Math.ceil((c.t-now-1e-6)/(cueBeat(t,c)||1));
-let taps=[];
+let taps=[],tapSong=[];
+// 곡 재생 중에 탭하면 곡 시간도 기록 → 박이 곡의 어디에 떨어지는지(격자 위치)를 구한다
+// 모든 탭을 지나는 가장 잘 맞는 직선: 기울기 = 박 길이, 절편 = 박 위치 (한두 번 삐끗해도 덜 흔들림)
+function fitBeats(xs){
+  const n=xs.length,mi=(n-1)/2,mx=xs.reduce((a,b)=>a+b,0)/n;
+  let num=0,den=0;xs.forEach((x,i)=>{num+=(i-mi)*(x-mx);den+=(i-mi)**2;});
+  return{beat:num/den,at:mx-mi*(num/den)};
+}
+const hasGrid=t=>t.bpm>0&&t.beat0!=null;
+// 가장 가까운 박으로
+function snapT(t,x){if(!hasGrid(t)||!opts.snap)return x;const b=60/t.bpm;return +(t.beat0+Math.round((x-t.beat0)/b)*b).toFixed(3);}
 function tapTempo(t){
   const now=performance.now();
-  if(taps.length&&now-taps.at(-1)>2000)taps=[];
+  if(taps.length&&now-taps.at(-1)>2000){taps=[];tapSong=[];}
   taps.push(now);if(taps.length>16)taps.shift();
+  const playing=playerId===t.id&&pstate()===1;
+  tapSong.push(playing?ptime():null);if(tapSong.length>16)tapSong.shift();
   const btn=$('.bpmrow .tap');if(btn){btn.classList.add('hit');setTimeout(()=>btn.classList.remove('hit'),90);}
   const info=$('#tapInfo');
   if(taps.length<3){if(info)info.textContent=`계속 탭하세요… (${taps.length})`;return;}
-  const bpm=Math.round(60000/((taps.at(-1)-taps[0])/(taps.length-1))*10)/10;
+  // 재생 중 탭이 3번 이상이면 곡 시간으로, 아니면 실제 시간으로 잰다
+  const st=tapSong.slice(-taps.length).filter(x=>x!=null),useSong=st.length>=3&&st.length===Math.min(taps.length,tapSong.length);
+  const fit=useSong?fitBeats(st):fitBeats(taps.map(x=>x/1000));
+  const raw=60/fit.beat,whole=Math.round(raw);
+  const bpm=Math.abs(raw-whole)<0.4?whole:Math.round(raw*10)/10;   // 대부분의 곡은 정수 BPM
   t.bpm=bpm;if($('[data-bpm]'))$('[data-bpm]').value=bpm;
-  if(info)info.textContent=`${taps.length}번 탭 · ${bpm} BPM`;
+  const hadGrid=hasGrid(t);
+  if(useSong){const b=60/bpm,a=st.reduce((acc,x,i)=>acc+(x-i*b),0)/st.length;t.beat0=+((a%b+b)%b).toFixed(3);}
+  if(!hadGrid&&hasGrid(t)){save();renderTrack();const i2=$('#tapInfo');if(i2)i2.textContent=`${taps.length}번 탭 · ${bpm} BPM · 박 위치도 맞췄어요`;return;}
+  if(info)info.textContent=`${taps.length}번 탭 · ${bpm} BPM${useSong?' · 박 위치도 맞췄어요':' · 재생 중에 탭하면 박 위치도 맞춰요'}`;
   save();renderTimeline(t);renderCues(t);
 }
+// 큐 떠있는 시간: BPM이 있으면 박, 없으면 초
+const cueHold=(t,c)=>{const bt=cueBeat(t,c);return bt?(c.holdBeats??2)*bt:(c.hold??1.5);};
 
 /* ---------- 타임라인 ---------- */
 let editCue=null,drag=null,lastType='HIGHLIGHT';
@@ -970,6 +998,8 @@ function renderTimeline(t){
   ruler.innerHTML=r;
   const st=t.start||0,en=t.end??D;
   let h='';
+  if(hasGrid(t)){const b=60/t.bpm;let k=Math.ceil(-t.beat0/b);
+    for(let x=t.beat0+k*b;x<D;x+=b,k++)h+=`<div class="gbeat${k%4===0?' gbar':''}" style="left:${pct(x)}"></div>`;}
   if(st>0)h+=`<div class="trim" style="left:0;width:${pct(st)}"></div>`;
   if(en<D)h+=`<div class="trim" style="left:${pct(en)};right:0"></div>`;
   t.cues.forEach((c,j)=>{const col=TCOL[c.type]||'#fff';
@@ -988,8 +1018,9 @@ function renderCues(t){
     <td><select data-c="type">${TYPES.map(y=>`<option ${y===c.type?'selected':''}>${y}</option>`).join('')}</select></td>
     <td><input data-c="cd" value="${esc(c.cd||'')}" placeholder="카운트다운 문구"></td>
     <td><input data-c="msg" value="${esc(c.msg||'')}" placeholder="큐 문구"></td>
+    <td style="white-space:nowrap">${cueBeat(t,c)?`<input class="xs" type="number" min="1" step="1" data-c="holdBeats" value="${c.holdBeats??2}"> 박`:`<input class="xs" type="number" min="0.5" step="0.5" data-c="hold" value="${c.hold??1.5}"> 초`}</td>
     <td class="act"><button data-cplay>▶</button> <button data-cdel>✕</button></td></tr>`).join('')
-    :`<tr><td colspan="6" class="hint">아직 큐포인트 없음</td></tr>`;
+    :`<tr><td colspan="7" class="hint">아직 큐포인트 없음</td></tr>`;
 }
 function refreshCues(t){renderTimeline(t);renderCues(t);save();}
 function openPop(t,c){
@@ -1001,6 +1032,9 @@ function openPop(t,c){
   $('#popLead').innerHTML=t.bpm||c.bpm
     ?`<input data-pop="beats" type="number" min="1" max="32" step="1" value="${c.beats??4}"> 박 전부터 · 이 큐 BPM <input class="bpmo" data-pop="bpm" type="number" step="0.1" value="${c.bpm||''}" placeholder="${t.bpm||''}">`
     :`<input data-pop="lead" type="number" min="0" step="0.5" value="${c.lead??5}"> 초 전부터 <span class="mut">(BPM을 넣으면 박 단위)</span>`;
+  $('#popHold').innerHTML=cueBeat(t,c)
+    ?`큐 문구 <input data-pop="holdBeats" type="number" min="1" max="64" step="1" value="${c.holdBeats??2}"> 박 동안 띄우기`
+    :`큐 문구 <input data-pop="hold" type="number" min="0.5" max="30" step="0.5" value="${c.hold??1.5}"> 초 동안 띄우기`;
   paintTypes(c);
   const w=$('#tl').clientWidth;pop.style.left=Math.min(w-150,Math.max(150,c.t/D*w))+'px';
   renderTimeline(t);setTimeout(()=>pop.querySelector('[data-pop=cd]').focus(),0);
@@ -1008,7 +1042,7 @@ function openPop(t,c){
 function paintTypes(c){document.querySelectorAll('#pop [data-ptype]').forEach(b=>{const on=b.dataset.ptype===c.type;b.classList.toggle('on',on);b.style.background=on?TCOL[b.dataset.ptype]:'';});}
 function closePop(){if(!editCue)return;editCue=null;const p=$('#pop');if(p)p.hidden=true;const t=trackOf(cur());if(t)renderTimeline(t);}
 function addCueAt(t,time,open){
-  const c={t:+time.toFixed(2),lead:5,beats:4,type:lastType,cd:'',msg:''};
+  const c={t:+(+time).toFixed(3),lead:5,beats:4,hold:1.5,holdBeats:2,type:lastType,cd:'',msg:''};
   t.cues.push(c);sortCues(t);refreshCues(t);if(open)openPop(t,c);return c;
 }
 
@@ -1034,12 +1068,12 @@ mainEl.addEventListener('pointerdown',e=>{
   e.preventDefault();
   if(ruler){if(live()&&playerId===t.id)player.seekTo(timeAt(e.clientX),true);else status('이 곡을 먼저 재생하세요');return;}
   if(mk){drag={c:t.cues[+mk.dataset.mk],el:mk,x0:e.clientX,moved:false,timeAt,D};mk.setPointerCapture(e.pointerId);return;}
-  addCueAt(t,timeAt(e.clientX),true);
+  addCueAt(t,snapT(t,timeAt(e.clientX)),true);
 });
 window.addEventListener('pointermove',e=>{
   if(!drag)return;
   if(Math.abs(e.clientX-drag.x0)>3)drag.moved=true;
-  if(drag.moved){drag.c.t=+drag.timeAt(e.clientX).toFixed(2);drag.el.style.left=(drag.c.t/drag.D*100)+'%';
+  if(drag.moved){const tr=trackOf(cur());const x=drag.timeAt(e.clientX);drag.c.t=drag.kind==='lyr'||!tr?+x.toFixed(2):snapT(tr,+x.toFixed(2));drag.el.style.left=(drag.c.t/drag.D*100)+'%';
     if(drag.kind==='lyr'){const sm=document.querySelector(`.lp[data-li="${drag.el.dataset.lmk}"] small`);if(sm)sm.textContent=fmt(drag.c.t);}}
 });
 window.addEventListener('pointerup',()=>{
@@ -1058,14 +1092,16 @@ mainEl.addEventListener('input',e=>{
   const k=e.target.dataset.k;
   if(k){t[k]=e.target.value;if(k==='title'||k==='artist')updateHeader();save();if(k!=='reason')pushTrackUpdate(t,1500);return;}
   const ck=e.target.dataset.c;
-  if(ck==='msg'||ck==='cd'||ck==='lead'||ck==='beats'){const c=t.cues[+e.target.closest('tr').dataset.j];
-    c[ck]=ck==='lead'?(+e.target.value||0):ck==='beats'?Math.max(1,Math.round(+e.target.value||4)):e.target.value;renderTimeline(t);save();return;}
+  if(['msg','cd','lead','beats','hold','holdBeats'].includes(ck)){const c=t.cues[+e.target.closest('tr').dataset.j],v=e.target.value;
+    c[ck]=ck==='lead'?(+v||0):ck==='beats'?Math.max(1,Math.round(+v||4)):ck==='holdBeats'?Math.max(1,Math.round(+v||2)):ck==='hold'?Math.max(0.5,+v||1.5):v;renderTimeline(t);save();return;}
   const pk=e.target.dataset.pop;
   if(pk&&editCue){
     if(pk==='msg')editCue.msg=e.target.value;
     if(pk==='cd')editCue.cd=e.target.value;
     if(pk==='lead')editCue.lead=Math.max(0,+e.target.value||0);
     if(pk==='beats')editCue.beats=Math.max(1,Math.round(+e.target.value||4));
+    if(pk==='holdBeats')editCue.holdBeats=Math.max(1,Math.round(+e.target.value||2));
+    if(pk==='hold')editCue.hold=Math.max(0.5,+e.target.value||1.5);
     if(pk==='bpm'){const v=+e.target.value;if(v>0)editCue.bpm=v;else delete editCue.bpm;}
     if(pk!=='t'){renderTimeline(t);renderCues(t);save();}
   }
@@ -1073,8 +1109,9 @@ mainEl.addEventListener('input',e=>{
 mainEl.addEventListener('change',e=>{
   const t=trackOf(cur());
   if(e.target.id==='optAuto'){opts.auto=e.target.checked;saveOpts();return;}
+  if(e.target.id==='optSnap'){opts.snap=e.target.checked;saveOpts();return;}
   if(!t)return;
-  if(e.target.dataset.bpm!==undefined){const v=Math.round(+e.target.value*10)/10;t.bpm=v>0?v:null;taps=[];save();renderTimeline(t);renderCues(t);return;}
+  if(e.target.dataset.bpm!==undefined){const v=Math.round(+e.target.value*10)/10;t.bpm=v>0?v:null;if(!t.bpm)delete t.beat0;taps=[];tapSong=[];save();renderTrack();return;}
   if(e.target.dataset.img!==undefined){uploadImg(t,e.target.files[0]);e.target.value='';return;}
   if(e.target.dataset.vup!==undefined){uploadVideos(t,e.target.files);e.target.value='';return;}
   const tc=e.target.dataset.tc;
@@ -1082,7 +1119,7 @@ mainEl.addEventListener('change',e=>{
   const ck=e.target.dataset.c;
   if(ck==='t'){const v=parseTC(e.target.value),c=t.cues[+e.target.closest('tr').dataset.j];if(v!=null)c.t=v;sortCues(t);refreshCues(t);return;}
   if(ck==='type'){t.cues[+e.target.closest('tr').dataset.j].type=e.target.value;refreshCues(t);return;}
-  if(e.target.dataset.pop==='t'&&editCue){const v=parseTC(e.target.value);if(v!=null)editCue.t=v;sortCues(t);refreshCues(t);openPop(t,editCue);}
+  if(e.target.dataset.pop==='t'&&editCue){const v=parseTC(e.target.value);if(v!=null)editCue.t=snapT(t,v);sortCues(t);refreshCues(t);openPop(t,editCue);}
 });
 mainEl.addEventListener('mouseover',e=>{const v=e.target.closest('.vcard video');if(v)v.play().catch(()=>{});});
 mainEl.addEventListener('mouseout',e=>{const v=e.target.closest('.vcard video');if(v)v.pause();});
@@ -1099,6 +1136,8 @@ mainEl.addEventListener('click',e=>{
   const b=e.target.closest('button');if(!b)return;
   const t=trackOf(cur());if(!t)return;
   if('pub' in b.dataset){publish(t,false);return;}
+  if(b.dataset.gshift&&hasGrid(t)){const bt=60/t.bpm;t.beat0=+(((t.beat0+ +b.dataset.gshift)%bt+bt)%bt).toFixed(3);save();renderTimeline(t);return;}
+  if('snapall' in b.dataset){if(!hasGrid(t))return;const on=opts.snap;opts.snap=true;t.cues.forEach(c=>c.t=snapT(t,c.t));opts.snap=on;sortCues(t);refreshCues(t);status(`큐 ${t.cues.length}개를 가장 가까운 박으로 옮겼습니다`);return;}
   if(b.dataset.bpmx){if(!t.bpm)return;t.bpm=Math.round(t.bpm*+b.dataset.bpmx*10)/10;$('[data-bpm]').value=t.bpm;save();renderTimeline(t);renderCues(t);return;}
   if(b.dataset.etab){opts.etab=b.dataset.etab;saveOpts();renderTrack();return;}
   if(b.dataset.vdel){const v=state.visuals.find(x=>x.vid===b.dataset.vdel),n=state.tracks.filter(x=>x.bg===v.vid).length;
@@ -1141,7 +1180,7 @@ document.addEventListener('keydown',e=>{
   const t=trackOf(cur());if(!t||!live())return;
   if(e.key==='Enter'&&opts.etab==='lyr'){e.preventDefault();const i=nextStampIdx(t);if(i<0)return status('마지막 구절까지 찍었습니다');stampLyric(t,i);return;}
   if(e.code==='KeyT'&&opts.etab!=='lyr'&&opts.etab!=='bg'){e.preventDefault();tapTempo(t);return;}
-  if(e.code==='KeyM'){e.preventDefault();if(playerId!==t.id)return status('이 곡을 먼저 재생하세요');const now=ptime();if(now!=null)addCueAt(t,now,false);}
+  if(e.code==='KeyM'){e.preventDefault();if(playerId!==t.id)return status('이 곡을 먼저 재생하세요');const now=ptime();if(now!=null)addCueAt(t,snapT(t,now),false);}
   if(e.code==='Space'){e.preventDefault();if(playerId===t.id)pstate()===1?player.pauseVideo():player.playVideo();}
 });
 
@@ -1168,7 +1207,7 @@ setInterval(()=>{
     document.querySelectorAll('.lp.cur').forEach(x=>{if(+x.dataset.li!==ci)x.classList.remove('cur');});
     if(ci>=0)document.querySelector(`.lp[data-li="${ci}"]`)?.classList.add('cur');
     document.querySelectorAll('.lmk').forEach(x=>x.classList.toggle('cur',+x.dataset.lmk===ci));}
-  const c=t.cues.find(c=>now>=c.t-cueLead(t,c)&&now<c.t+1);
+  const c=t.cues.find(c=>now>=c.t-cueLead(t,c)&&now<c.t+cueHold(t,c));
   if(c){cd.hidden=false;cd.innerHTML=now<c.t?`<div><b>${cueCount(t,c,now)}</b><span>${esc(c.cd||c.type)}</span></div>`:`<b class="hit">${esc(c.msg||c.type)}</b>`;}
   else cd.hidden=true;
 },100);
