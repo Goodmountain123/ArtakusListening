@@ -207,6 +207,7 @@ dialog h3{margin:0 0 12px;font-size:15px}
   <button id="screenBtn" title="같은 브라우저의 새 창으로 엽니다. 전체화면은 송출 창에서 F">송출 화면 ↗</button>
   <a class="btn" href="/" target="_blank" style="text-decoration:none">참가자 화면 ↗</a>
 </header>
+<div class="warnbar" id="updBar" hidden>새 버전이 배포됐습니다. 송출 화면과 함께 쓰려면 이 창도 새로고침해야 합니다. <button onclick="location.reload()" style="margin-left:8px">지금 새로고침</button> <span class="mut" style="font-size:12px">(입력한 내용은 저장돼 있습니다)</span></div>
 <div class="warnbar" id="warn" hidden>file:// 로 열면 YouTube가 재생을 거부합니다(오류 153). 배포된 주소의 /admin/ 으로 여세요.</div>
 <div class="layout">
   <aside>
@@ -1226,6 +1227,15 @@ if(location.protocol==='file:')$('#warn').hidden=false;
 route();
 checkServer();refreshLive();setInterval(refreshLive,10000);
 const tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);
+
+/* ---------- 새 버전이 배포되면 알려주기 ---------- */
+(()=>{
+  const h=s=>{let x=0;for(let i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))|0;return x;};
+  let base=null;
+  const check=async()=>{try{const r=await fetch(location.pathname,{cache:'no-store'});if(!r.ok)return;const v=h(await r.text());
+    if(base===null)base=v;else if(v!==base)document.getElementById('updBar').hidden=false;}catch(e){}};
+  check();setInterval(check,60000);
+})();
 </script>
 </body>
 </html>

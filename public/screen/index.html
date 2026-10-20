@@ -76,6 +76,7 @@ body.show-ctrl .ctrl{opacity:1}
 .tlb-fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.55)}
 .tlb-mk{position:absolute;bottom:0;width:.42vw;min-width:4px;height:1.1vw;min-height:10px;margin-left:-.21vw;border-radius:.21vw .21vw 0 0;background:var(--acc)}
 .tlb-mk.past{opacity:.35}
+.upd{position:fixed;right:1.4vw;bottom:1.4vw;font-size:13px;background:rgba(245,184,74,.9);color:#111;border-radius:6px;padding:6px 10px;font-weight:600}
 .toast{position:fixed;left:50%;top:2vw;transform:translateX(-50%);background:rgba(0,0,0,.7);border-radius:8px;padding:10px 16px;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.on{opacity:1}
 .link{position:fixed;left:1.2vw;bottom:1vw;font-size:12px;color:rgba(255,255,255,.45)}
@@ -102,6 +103,7 @@ body.show-ctrl .ctrl{opacity:1}
 <div class="tlb" id="tlb" hidden><div class="tlb-fill" id="tlbFill"></div><div id="tlbMarks"></div></div>
 
 <div class="ctrl"><span id="wsState">서버 연결 중…</span><span id="rxCount" hidden></span><span id="ofs"></span><button id="fsBtn">전체화면 (F)</button></div>
+<div class="upd" id="updBar" hidden>새 버전 — 관리자 창과 이 창을 새로고침하세요 (F5)</div>
 <div class="toast" id="toast"></div>
 <div class="link" id="link">관리자 화면 연결 대기 중 — 같은 브라우저에서 관리자 페이지를 열어두세요</div>
 
@@ -322,6 +324,15 @@ let idleT;
 function wake(){document.body.classList.add('show-ctrl');document.body.classList.remove('idle-cursor');clearTimeout(idleT);
   idleT=setTimeout(()=>{document.body.classList.remove('show-ctrl');document.body.classList.add('idle-cursor');},2500);}
 document.addEventListener('mousemove',wake);wake();
+
+/* ---------- 새 버전이 배포되면 알려주기 ---------- */
+(()=>{
+  const h=s=>{let x=0;for(let i=0;i<s.length;i++)x=(x*31+s.charCodeAt(i))|0;return x;};
+  let base=null;
+  const check=async()=>{try{const r=await fetch(location.pathname,{cache:'no-store'});if(!r.ok)return;const v=h(await r.text());
+    if(base===null)base=v;else if(v!==base)document.getElementById('updBar').hidden=false;}catch(e){}};
+  check();setInterval(check,60000);
+})();
 </script>
 </body>
 </html>
