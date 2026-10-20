@@ -15,6 +15,16 @@ const MAX_EVENT_BYTES = 1_900_000;
 const MAX_IMG_BYTES = 600_000;
 const IMG_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const str = (v, max) => String(v ?? "").trim().slice(0, max);
+// 보이는 댓글: 숨김 처리 안 됐고, 답글이면 원 댓글도 살아 있어야 한다
+const visibleComments = (list) => {
+  const alive = new Set(list.filter((c) => !c.hidden && !c.parent).map((c) => c.key));
+  return list.filter((c) => !c.hidden && (!c.parent || alive.has(c.parent)));
+};
+// 참가자에게 보내는 형태 (작성자 기기 ID·좋아요 누른 사람 목록은 빼고 숫자만)
+const pubComment = (c, cid) => ({
+  key: c.key, parent: c.parent || "", nick: c.nick, text: c.text, at: c.at,
+  likes: (c.likes || []).length, ...(cid !== undefined ? { liked: (c.likes || []).includes(cid) } : {}),
+});
 
 export class LiveRoom extends DurableObject {
   constructor(ctx, env) {
@@ -114,10 +124,10 @@ export class LiveRoom extends DurableObject {
       const id = tm[1];
       const state = await this.getState();
       if (!state.unlocked.some((t) => t.id === id)) return new Response("아직 공개되지 않은 곡", { status: 403 });
-      const comments = ((await this.ctx.storage.get("c:" + id)) || [])
-        .filter((c) => !c.hidden)
-        .map(({ key, nick, text, at }) => ({ key, nick, text, at }));
-      return Response.json({ ...(await this.ratingSummary(id, url.searchParams.get("cid"))), comments });
+      const cid = url.searchParams.get("cid") || "";
+      const list = (await this.ctx.storage.get("c:" + id)) || [];
+      const comments = visibleComments(list).map((c) => pubComment(c, cid));
+      return Response.json({ ...(await this.ratingSummary(id, cid)), comments });
     }
 
     // ---------- 참가자: 별점 ----------
@@ -133,29 +143,50 @@ export class LiveRoom extends DurableObject {
       return Response.json(await this.ratingSummary(id, cid));
     }
 
-    // ---------- 참가자: 댓글 ----------
+    // ---------- 참가자: 댓글 · 답글 ----------
     if (url.pathname === "/api/comment" && method === "POST") {
       const b = await request.json();
-      const id = str(b.id, 20), cid = str(b.cid, 64), nick = str(b.nick, 20), text = str(b.text, 300);
+      const id = str(b.id, 20), cid = str(b.cid, 64), nick = str(b.nick, 20), text = str(b.text, 300), parent = str(b.parent, 20);
       if (!id || !cid || !nick || !text) return new Response("닉네임과 내용을 입력하세요", { status: 400 });
       const state = await this.getState();
       if (!state.unlocked.some((t) => t.id === id)) return new Response("아직 공개되지 않은 곡", { status: 403 });
       const now = Date.now();
       if (now - (this.lastComment.get(cid) || 0) < 5000) return new Response("잠시 후에 다시 남겨주세요", { status: 429 });
       const list = (await this.ctx.storage.get("c:" + id)) || [];
-      if (list.some((c) => c.by === cid && c.text === text && !c.hidden)) return new Response("같은 댓글이 이미 있어요", { status: 409 });
-      const comment = { key: crypto.randomUUID().slice(0, 8), by: cid, nick, text, at: now };
+      // 답글은 한 단계만: 원 댓글이 살아 있는 일반 댓글이어야 한다
+      if (parent && !list.some((c) => c.key === parent && !c.parent && !c.hidden)) return new Response("원 댓글을 찾을 수 없어요", { status: 400 });
+      if (list.some((c) => c.by === cid && c.text === text && (c.parent || "") === parent && !c.hidden)) return new Response("같은 댓글이 이미 있어요", { status: 409 });
+      const comment = { key: crypto.randomUUID().slice(0, 8), by: cid, nick, text, at: now, likes: [] };
+      if (parent) comment.parent = parent;
       list.push(comment);
       this.lastComment.set(cid, now);
       await this.ctx.storage.put("c:" + id, list);
-      state.counts[id] = list.filter((c) => !c.hidden).length;
+      state.counts[id] = visibleComments(list).length;
       await this.ctx.storage.put("state", state);
-      const pub = { key: comment.key, nick, text, at: now };
-      this.send({ type: "comment", id, comment: pub, count: state.counts[id] });
-      return Response.json({ ok: true, comment: pub });
+      this.send({ type: "comment", id, comment: pubComment(comment), count: state.counts[id] });
+      return Response.json({ ok: true, comment: pubComment(comment, cid) });
     }
 
-    // ---------- 관리자: 댓글 숨기기 ----------
+    // ---------- 참가자: 댓글 좋아요 (누를 때마다 켜고 끄기) ----------
+    if (url.pathname === "/api/like" && method === "POST") {
+      const b = await request.json();
+      const id = str(b.id, 20), key = str(b.key, 20), cid = str(b.cid, 64);
+      if (!id || !key || !cid) return new Response("잘못된 요청", { status: 400 });
+      const state = await this.getState();
+      if (!state.unlocked.some((t) => t.id === id)) return new Response("아직 공개되지 않은 곡", { status: 403 });
+      const list = (await this.ctx.storage.get("c:" + id)) || [];
+      const c = visibleComments(list).find((x) => x.key === key);
+      if (!c) return new Response("없는 댓글", { status: 404 });
+      c.likes ||= [];
+      const i = c.likes.indexOf(cid);
+      if (i >= 0) c.likes.splice(i, 1);
+      else c.likes.push(cid);
+      await this.ctx.storage.put("c:" + id, list);
+      this.send({ type: "like", id, key, likes: c.likes.length });
+      return Response.json({ ok: true, likes: c.likes.length, liked: i < 0 });
+    }
+
+    // ---------- 관리자: 댓글 숨기기 (답글이 달린 댓글이면 답글도 함께 안 보임) ----------
     if (url.pathname === "/api/comment" && method === "DELETE") {
       const { id, key } = await request.json();
       const list = (await this.ctx.storage.get("c:" + id)) || [];
@@ -164,7 +195,7 @@ export class LiveRoom extends DurableObject {
       c.hidden = true;
       await this.ctx.storage.put("c:" + id, list);
       const state = await this.getState();
-      state.counts[id] = list.filter((x) => !x.hidden).length;
+      state.counts[id] = visibleComments(list).length;
       await this.ctx.storage.put("state", state);
       this.send({ type: "uncomment", id, key, count: state.counts[id] });
       return Response.json({ ok: true });
@@ -294,7 +325,7 @@ export default {
     if (url.pathname === "/live" || url.pathname.startsWith("/api/")) {
       // 상태를 바꾸는 요청과 행사 파일은 관리자 토큰 필요
       // 별점·댓글 작성은 참가자도 가능
-      const participantWrite = request.method === "POST" && ["/api/rate", "/api/comment"].includes(url.pathname);
+      const participantWrite = request.method === "POST" && ["/api/rate", "/api/comment", "/api/like"].includes(url.pathname);
       const needsToken = url.pathname.startsWith("/api/events") || (request.method !== "GET" && !participantWrite);
       if (needsToken) {
         const token = request.headers.get("x-admin-token");

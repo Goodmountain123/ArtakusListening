@@ -73,6 +73,20 @@ header h1{font-size:12px;letter-spacing:.18em;margin:0}
 .cm-list .who b{color:#cfd0d6;font-weight:600;margin-right:6px}
 .cm-list .txt{font-size:14px;white-space:pre-wrap;word-break:break-word}
 .cm-empty{color:var(--mut);font-size:13px;padding:10px 0}
+.cm-head{align-items:center!important}
+.cm-write{font-size:12px;color:#fff!important;background:var(--acc);border-radius:99px;padding:5px 12px;font-weight:600}
+.acts{display:flex;gap:14px;margin-top:3px;font-size:12px;color:var(--mut)}
+.acts button{color:var(--mut);display:flex;align-items:center;gap:4px;font-size:12px}
+.acts .like svg{width:13px;height:13px}
+.acts .like.on{color:#ff6b81}
+.acts .rt{color:#9aa6c8}
+.cm-list .replies{list-style:none;margin:8px 0 2px;padding:0 0 0 12px;border-left:2px solid #2a2c35}
+.cm-list .replies li{border:0;padding:5px 0}
+.cm-foot button{width:100%;margin-top:8px;padding:9px;border-radius:10px;background:#202129;color:#c9cad1;font-size:13px}
+#compose{position:fixed;inset:0;z-index:30;display:flex;align-items:flex-end;justify-content:center}
+#compose[hidden]{display:none}
+.c-title{font-size:16px;font-weight:700}
+.c-quote{font-size:13px;color:var(--mut);border-left:2px solid #3a3d4a;padding:2px 0 2px 10px;margin:10px 0 0;white-space:pre-wrap;word-break:break-word;max-height:4.5em;overflow:hidden}
 .cm-form{margin-top:12px;display:grid;gap:8px}
 .cm-form input,.cm-form textarea{width:100%;background:#0c0d11;border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px 12px;font:inherit;font-size:16px}
 .cm-form textarea{min-height:60px;resize:vertical}
@@ -144,6 +158,7 @@ li.lock.next .lockbar{background:repeating-linear-gradient(90deg,#2a2224 0 8px,#
   <div id="program"></div>
 </div>
 <div id="sheet" hidden><div class="backdrop" data-close></div><div class="panel" id="panel"></div></div>
+<div id="compose" hidden><div class="backdrop" data-cclose></div><div class="panel" id="cpanel"></div></div>
 <script>
 const $=s=>document.querySelector(s);
 const $$=s=>[...document.querySelectorAll(s)];
@@ -154,6 +169,7 @@ const I={
   star:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z"/></svg>',
   starO:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3 6.1 20.6l1.3-6.6L2.5 9.4l6.6-.8z"/></svg>',
   cm:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg>',
+  heart:'<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5s-7.5-4.6-9.3-9.2C1.4 8 3.4 4.5 7 4.5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 5.6 3.5 4.3 6.8-1.8 4.6-9.3 9.2-9.3 9.2z"/></svg>',
   x:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
 };
 const lockW=(sid,i)=>{let h=0;for(const c of sid+i)h=(h*31+c.charCodeAt(0))>>>0;return 38+h%45;};
@@ -165,6 +181,10 @@ const store={get(k,d){try{return JSON.parse(localStorage.getItem('lp_'+k))??d;}c
 let cid=store.get('cid',null);if(!cid){cid=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now());store.set('cid',cid);}
 let myRates=store.get('rates',{});
 let nick=store.get('nick','');
+let liked=store.get('liked',{});      // 내가 좋아요 누른 댓글
+const moreOpen=new Set();             // 더보기 펼친 곡
+const repliesOpen=new Set();          // 답글 펼친 댓글
+const TOP_N=5;
 
 let S={program:{sessions:[]},now:null,unlocked:[],counts:{}};
 const D={};            // 곡별 상세 (별점 요약 · 댓글)
@@ -178,10 +198,26 @@ function rateText(id){
   const d=D[id];
   return myRates[id]&&d&&d.n?`평균 ${d.avg} · ${d.n}명`:'';
 }
+// 댓글: 좋아요 많은 순(같으면 최신 순) 상위 5개, 더보기로 전체. 답글은 접혀 있음
+const topLevel=id=>(D[id]?.comments||[]).filter(c=>!c.parent).sort((a,b)=>(b.likes-a.likes)||(b.at-a.at));
+function cmItem(id,c,isReply){
+  const reps=isReply?[]:D[id].comments.filter(x=>x.parent===c.key).sort((a,b)=>a.at-b.at);
+  const open=repliesOpen.has(c.key);
+  return `<li><div class="who"><b>${esc(c.nick)}</b>${fmtTime(c.at)}</div><div class="txt">${esc(c.text)}</div>
+    <div class="acts"><button class="like${liked[c.key]?' on':''}" data-like="${esc(c.key)}" aria-label="좋아요">${I.heart}<span>${c.likes||''}</span></button>
+    ${isReply?'':`<button data-reply="${esc(c.key)}">답글 달기</button>`}
+    ${reps.length?`<button class="rt" data-rtoggle="${esc(c.key)}">${open?'답글 접기':`답글 ${reps.length}개 보기`}</button>`:''}</div>
+    ${open&&reps.length?`<ul class="replies">${reps.map(r=>cmItem(id,r,true)).join('')}</ul>`:''}</li>`;
+}
 function cmItems(id){
-  const d=D[id];if(!d)return '<li class="cm-empty">불러오는 중…</li>';
-  const list=d.comments;
-  return list.length?list.map(c=>`<li><div class="who"><b>${esc(c.nick)}</b>${fmtTime(c.at)}</div><div class="txt">${esc(c.text)}</div></li>`).join(''):'<li class="cm-empty">첫 댓글을 남겨주세요</li>';
+  if(!D[id])return '<li class="cm-empty">불러오는 중…</li>';
+  const top=topLevel(id),shown=moreOpen.has(id)?top:top.slice(0,TOP_N);
+  return top.length?shown.map(c=>cmItem(id,c,false)).join(''):'<li class="cm-empty">첫 댓글을 남겨주세요</li>';
+}
+function cmFoot(id){
+  const n=topLevel(id).length;
+  if(n<=TOP_N)return '';
+  return `<button data-cmore="${esc(id)}">${moreOpen.has(id)?'접기':`더보기 (${n-TOP_N})`}</button>`;
 }
 function formHTML(){
   return `${nick?`<div class="row"><span class="nick">닉네임 <b>${esc(nick)}</b><button type="button" data-renick>바꾸기</button></span></div>`:`<input class="nick-in" maxlength="20" placeholder="닉네임" autocomplete="nickname">`}
@@ -193,10 +229,9 @@ function detailBlock(t,ctx){
   const info=[['곡 해설',t.notes],['관련곡',t.related]].filter(([,v])=>v);
   const count=D[t.id]?D[t.id].comments.length:(S.counts[t.id]||0);
   const rate=`<div class="myrate"><span>내 별점</span><span class="stars">${[1,2,3,4,5].map(i=>`<button data-rate="${i}" class="${i<=mine?'on':''}" aria-label="${i}점">${I.star}</button>`).join('')}</span><span class="rate-info">${rateText(t.id)}</span></div>`;
-  // 지금 곡 카드: 댓글은 팝업에서 / 팝업: 댓글 목록과 입력
-  const cm=ctx==='now'
-    ?`<button class="cm-open" data-open="${esc(t.id)}">${I.cm}<span>댓글 <span class="cm-count">${count}</span></span><span class="go">보기 · 남기기 ›</span></button>`
-    :`<div class="cm-head"><b>댓글 <span class="cm-count">${count}</span></b></div><ul class="cm-list">${cmItems(t.id)}</ul><form class="cm-form">${formHTML()}</form>`;
+  // 댓글은 바로 보이고, 쓰기만 팝업
+  const cm=`<div class="cm-head"><b>댓글 <span class="cm-count">${count}</span></b><button class="cm-write" data-compose="${esc(t.id)}">댓글 쓰기</button></div>
+    <ul class="cm-list">${cmItems(t.id)}</ul><div class="cm-foot">${cmFoot(t.id)}</div>`;
   return `<div class="detail" data-ctx="${ctx}" data-id="${esc(t.id)}">
     ${info.map(([k,v])=>`<div class="sect"><b>${k}</b><div>${esc(v)}</div></div>`).join('')}
     ${rate}${cm}</div>`;
@@ -209,6 +244,7 @@ function refreshDetail(id){
     set('.rate-info',x=>x.textContent=rateText(id));
     set('.cm-count',x=>x.textContent=D[id]?D[id].comments.length:(S.counts[id]||0));
     set('.cm-list',x=>x.innerHTML=cmItems(id));
+    set('.cm-foot',x=>x.innerHTML=cmFoot(id));
   });
 }
 async function loadDetail(id){
@@ -216,6 +252,7 @@ async function loadDetail(id){
     const r=await fetch(`/api/track/${encodeURIComponent(id)}?cid=${encodeURIComponent(cid)}`);
     if(!r.ok)throw 0;
     const d=await r.json();D[id]=d;
+    d.comments.forEach(c=>{if(c.liked)liked[c.key]=true;else delete liked[c.key];});store.set('liked',liked);
     if(d.mine&&myRates[id]!==d.mine){myRates[id]=d.mine;store.set('rates',myRates);renderList();}
   }catch(e){D[id]=D[id]||{avg:0,n:0,mine:0,comments:[]};}
   refreshDetail(id);
@@ -227,7 +264,6 @@ function renderStage(){
   const t=S.now,ss=sessions(),s=t&&ss.find(x=>x.id===t.sid);
   const key=JSON.stringify([t,s,s?ss.indexOf(s):-1]);
   if(key===stageKey)return;       // 바뀐 게 없으면 다시 그리지 않음 (입력 중인 댓글 보호)
-  const prevId=$('#stage .detail')?.dataset.id,prevText=$('#stage .cm-in')?.value||'';
   stageKey=key;
   if(!t){$('#stage').innerHTML='<section class="stage plain"><div class="waiting">곧 시작합니다</div></section>';return;}
   const meta=[t.artist,t.album,t.year].filter(Boolean).map(esc).join(' · ');
@@ -238,7 +274,6 @@ function renderStage(){
       <div class="head"><div class="label"><span class="eq"><b></b><b></b><b></b></span>NOW PLAYING</div>
       <h2>${esc(t.title)}</h2><div class="meta">${meta}</div></div>
       ${detailBlock(t,'now')}</div></section>`;
-  if(prevId===t.id&&prevText)$('#stage .cm-in').value=prevText;
   if(!D[t.id])loadDetail(t.id);
 }
 
@@ -312,12 +347,48 @@ function closeSheet(fromPop){
   openId=null;$('#sheet').hidden=true;$('#panel').innerHTML='';document.body.classList.remove('lock');
   if(!fromPop)history.back();
 }
-window.addEventListener('popstate',()=>closeSheet(true));
+let composing=null; // {id, parent}
+function openCompose(id,parent){
+  const t=trackById(id);if(!t)return;
+  composing={id,parent:parent||''};
+  const p=parent&&D[id]?.comments.find(c=>c.key===parent);
+  $('#cpanel').innerHTML=`<button class="close" data-cclose aria-label="닫기">${I.x}</button>
+    <div class="c-title">${p?'답글 쓰기':'댓글 쓰기'}</div><div class="p-meta">${esc(t.title)} · ${esc(t.artist)}</div>
+    ${p?`<div class="c-quote"><b>${esc(p.nick)}</b> ${esc(p.text)}</div>`:''}
+    <form class="cm-form">${formHTML()}</form>`;
+  history.pushState({compose:1},'');
+  $('#compose').hidden=false;document.body.classList.add('lock');
+  setTimeout(()=>($('#cpanel .nick-in')||$('#cpanel .cm-in'))?.focus(),50);
+}
+function closeCompose(fromPop){
+  if(!composing)return;
+  composing=null;$('#compose').hidden=true;$('#cpanel').innerHTML='';
+  if(!openId)document.body.classList.remove('lock');
+  if(!fromPop)history.back();
+}
+window.addEventListener('popstate',()=>{if(composing)closeCompose(true);else closeSheet(true);});
 
 /* ---------- 클릭 · 별점 · 댓글 ---------- */
 document.addEventListener('click',async e=>{
   const o=e.target.closest('[data-open]');if(o){openSheet(o.dataset.open);return;}
   if(e.target.closest('[data-close]')){closeSheet();return;}
+  if(e.target.closest('[data-cclose]')){closeCompose();return;}
+  const cw=e.target.closest('[data-compose]');if(cw){openCompose(cw.dataset.compose);return;}
+  const rp=e.target.closest('[data-reply]');if(rp){openCompose(rp.closest('.detail').dataset.id,rp.dataset.reply);return;}
+  const rt=e.target.closest('[data-rtoggle]');
+  if(rt){const k=rt.dataset.rtoggle;repliesOpen.has(k)?repliesOpen.delete(k):repliesOpen.add(k);refreshDetail(rt.closest('.detail').dataset.id);return;}
+  const mo=e.target.closest('[data-cmore]');
+  if(mo){const id=mo.dataset.cmore;moreOpen.has(id)?moreOpen.delete(id):moreOpen.add(id);refreshDetail(id);return;}
+  const lk=e.target.closest('[data-like]');
+  if(lk){
+    const id=lk.closest('.detail').dataset.id,key=lk.dataset.like,c=D[id]?.comments.find(x=>x.key===key);if(!c)return;
+    const on=!liked[key];
+    if(on)liked[key]=true;else delete liked[key];store.set('liked',liked);
+    c.likes=Math.max(0,(c.likes||0)+(on?1:-1));refreshDetail(id);
+    try{const r=await fetch('/api/like',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,key,cid})});
+      if(r.ok){const j=await r.json();c.likes=j.likes;if(j.liked)liked[key]=true;else delete liked[key];store.set('liked',liked);refreshDetail(id);}}catch(err){}
+    return;
+  }
   const rb=e.target.closest('[data-rate]');
   if(rb){
     const id=rb.closest('.detail').dataset.id,score=+rb.dataset.rate;
@@ -335,16 +406,20 @@ document.addEventListener('click',async e=>{
 document.addEventListener('submit',async e=>{
   const f=e.target.closest('.cm-form');if(!f)return;
   e.preventDefault();
-  const id=f.closest('.detail').dataset.id,inp=f.querySelector('.cm-in'),err=f.querySelector('.err'),btn=f.querySelector('.send');
+  if(!composing)return;
+  const {id,parent}=composing,inp=f.querySelector('.cm-in'),err=f.querySelector('.err'),btn=f.querySelector('.send');
   const text=inp.value.trim(),nn=nick||(f.querySelector('.nick-in')?.value.trim()||'');
   if(!nn){err.textContent='닉네임을 먼저 정해주세요';f.querySelector('.nick-in')?.focus();return;}
   if(!text){err.textContent='내용을 입력해주세요';return;}
   btn.disabled=true;err.textContent='';
   try{
-    const r=await fetch('/api/comment',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,cid,nick:nn,text})});
+    const r=await fetch('/api/comment',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,cid,nick:nn,text,parent})});
     if(!r.ok)throw new Error(await r.text());
-    inp.value='';
-    if(!nick){nick=nn;store.set('nick',nick);$$('.cm-form').forEach(x=>{const v=x.querySelector('.cm-in').value;x.innerHTML=formHTML();x.querySelector('.cm-in').value=v;});}
+    const {comment}=await r.json();
+    if(D[id]&&!D[id].comments.some(c=>c.key===comment.key))D[id].comments.push(comment);
+    if(parent)repliesOpen.add(parent);
+    if(!nick){nick=nn;store.set('nick',nick);}
+    refreshDetail(id);renderList();closeCompose();return;
   }catch(ex){err.textContent=ex.message||'등록하지 못했어요';}
   btn.disabled=false;
 });
@@ -359,12 +434,16 @@ function onMessage(m){
     render();
     if(openId&&!trackById(openId))closeSheet();
   }
+  if(m.type==='like'){
+    const c=D[m.id]?.comments.find(x=>x.key===m.key);
+    if(c){c.likes=m.likes;refreshDetail(m.id);}
+  }
   if(m.type==='comment'||m.type==='uncomment'){
     S.counts[m.id]=m.count;
     const d=D[m.id];
     if(d){
       if(m.type==='comment'&&!d.comments.some(c=>c.key===m.comment.key))d.comments.push(m.comment);
-      if(m.type==='uncomment')d.comments=d.comments.filter(c=>c.key!==m.key);
+      if(m.type==='uncomment')d.comments=d.comments.filter(c=>c.key!==m.key&&c.parent!==m.key);
     }
     refreshDetail(m.id);renderList();
   }
