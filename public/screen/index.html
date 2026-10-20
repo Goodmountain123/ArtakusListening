@@ -96,7 +96,7 @@ body.show-ctrl .ctrl{opacity:1}
 <div class="cd" id="cd" hidden></div>
 <div class="reacts" id="reacts"></div>
 
-<div class="ctrl"><span id="ofs"></span><button id="fsBtn">전체화면 (F)</button></div>
+<div class="ctrl"><span id="wsState">서버 연결 중…</span><span id="rxCount" hidden></span><span id="ofs"></span><button id="fsBtn">전체화면 (F)</button></div>
 <div class="toast" id="toast"></div>
 <div class="link" id="link">관리자 화면 연결 대기 중 — 같은 브라우저에서 관리자 페이지를 열어두세요</div>
 
@@ -230,11 +230,11 @@ if(bc){
 }
 
 /* ---------- 서버 (지금 곡 · 댓글 실시간) ---------- */
-let delay=1000;
+let delay=1000,rxN=0;
 function connect(){
   const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/live');
   let ping;
-  ws.onopen=()=>{delay=1000;ping=setInterval(()=>ws.readyState===1&&ws.send('ping'),25000);};
+  ws.onopen=()=>{$('#wsState').textContent='● 실시간 연결됨';$('#wsState').style.color='#3ecf8e';delay=1000;ping=setInterval(()=>ws.readyState===1&&ws.send('ping'),25000);};
   ws.onmessage=e=>{
     if(e.data==='pong')return;const m=JSON.parse(e.data);
     if(m.type==='state'){
@@ -244,11 +244,11 @@ function connect(){
         session:(()=>{const ss=m.program?.sessions||[],s=ss.find(x=>x.id===n.sid);return s?{num:ss.indexOf(s)+1,name:s.name,desc:s.desc}:null;})()}:null;
       if(!linked())renderInfo();
     }
-    if(m.type==='react')floatUp(m.e);
+    if(m.type==='react'){floatUp(m.e);rxN++;$('#rxCount').hidden=false;$('#rxCount').textContent=`반응 ${rxN}`;}
     if(m.type==='comment'&&m.id===cmFor){comments.push(m.comment);cmIdx=comments.length-2;showComment(false);} // 새 댓글은 바로 다음에
     if(m.type==='uncomment'&&m.id===cmFor){comments=comments.filter(c=>c.key!==m.key&&c.parent!==m.key);cmIdx=Math.min(cmIdx,comments.length-1);if(!comments.length)showComment(true);}
   };
-  ws.onclose=()=>{clearInterval(ping);setTimeout(connect,delay);delay=Math.min(delay*2,15000);};
+  ws.onclose=()=>{$('#wsState').textContent='○ 재연결 중';$('#wsState').style.color='#f5b84a';clearInterval(ping);setTimeout(connect,delay);delay=Math.min(delay*2,15000);};
 }
 connect();
 

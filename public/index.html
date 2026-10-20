@@ -192,7 +192,6 @@ const moreOpen=new Set();             // 더보기 펼친 곡
 const repliesOpen=new Set();          // 답글 펼친 댓글
 const TOP_N=5;
 const REACTS=[['heart','❤️'],['party','🎉'],['clap','👏'],['smile','😄'],['dance','💃']];
-let reactLast=0;
 
 let S={program:{sessions:[]},now:null,unlocked:[],counts:{}};
 const D={};            // 곡별 상세 (별점 요약 · 댓글)
@@ -381,7 +380,6 @@ window.addEventListener('popstate',()=>{if(composing)closeCompose(true);else clo
 document.addEventListener('click',async e=>{
   const rb2=e.target.closest('[data-react]');
   if(rb2){
-    const now=Date.now();if(now-reactLast<180)return;reactLast=now;
     const fly=document.createElement('span');fly.className='fly';fly.textContent=rb2.textContent;rb2.appendChild(fly);setTimeout(()=>fly.remove(),800);
     if(navigator.vibrate)try{navigator.vibrate(8);}catch(err){}
     fetch('/api/react',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cid,e:rb2.dataset.react})}).catch(()=>{});
