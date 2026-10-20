@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 // 참가자에게 보내도 되는 곡 필드 (선정 이유·큐포인트·타임코드는 제외)
-const TRACK_FIELDS = ["id", "sid", "index", "title", "artist", "album", "year", "notes", "related"];
+const TRACK_FIELDS = ["id", "sid", "index", "title", "artist", "album", "year", "notes", "related", "img"];
 const pickTrack = (t) => Object.fromEntries(TRACK_FIELDS.map((k) => [k, t?.[k] ?? ""]));
 // 세션은 이름·설명·곡 수만 (곡 제목은 공개 전까지 서버에도 없음)
 const pickSession = (s) => ({
@@ -12,6 +12,8 @@ const pickSession = (s) => ({
 });
 const empty = () => ({ program: { sessions: [] }, now: null, unlocked: [], counts: {} });
 const MAX_EVENT_BYTES = 1_900_000;
+const MAX_IMG_BYTES = 600_000;
+const IMG_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const str = (v, max) => String(v ?? "").trim().slice(0, max);
 
 export class LiveRoom extends DurableObject {
@@ -74,6 +76,36 @@ export class LiveRoom extends DurableObject {
       state.program = { sessions: (body.sessions || []).map(pickSession) };
       await this.setState(state);
       return Response.json({ ok: true });
+    }
+
+    // ---------- 썸네일 ----------
+    const im = url.pathname.match(/^\/(?:api\/)?img\/([\w-]+)$/);
+    if (im) {
+      const id = im[1];
+      if (method === "GET" && url.pathname.startsWith("/img/")) {
+        // 공개된 곡이거나 관리자일 때만 (미공개 곡 이미지 노출 방지)
+        if (request.headers.get("x-admin") !== "1") {
+          const state = await this.getState();
+          if (!state.unlocked.some((t) => t.id === id)) return new Response("Not found", { status: 404 });
+        }
+        const img = await this.ctx.storage.get("img:" + id);
+        if (!img) return new Response("Not found", { status: 404 });
+        return new Response(img.data, {
+          headers: { "content-type": img.type, "cache-control": "private, max-age=86400" },
+        });
+      }
+      if (method === "PUT") {
+        const type = (request.headers.get("content-type") || "").split(";")[0];
+        if (!IMG_TYPES.includes(type)) return new Response("JPG/PNG/WEBP만 가능합니다", { status: 415 });
+        const data = await request.arrayBuffer();
+        if (data.byteLength > MAX_IMG_BYTES) return new Response("이미지가 너무 큽니다", { status: 413 });
+        await this.ctx.storage.put("img:" + id, { type, data });
+        return Response.json({ ok: true, v: Date.now() });
+      }
+      if (method === "DELETE") {
+        await this.ctx.storage.delete("img:" + id);
+        return Response.json({ ok: true });
+      }
     }
 
     // ---------- 참가자: 곡 상세 (별점 요약 + 댓글) ----------
@@ -149,6 +181,18 @@ export class LiveRoom extends DurableObject {
       else state.unlocked.push(track);
       await this.setState(state);
       return Response.json({ ok: true, listeners: this.ctx.getWebSockets().length });
+    }
+
+    // 관리자: 이미 공개된 곡의 정보만 갱신 (지금 곡은 바꾸지 않음)
+    if (url.pathname === "/api/track-update" && method === "POST") {
+      const track = pickTrack(await request.json());
+      const state = await this.getState();
+      const i = state.unlocked.findIndex((t) => t.id === track.id);
+      if (i < 0) return Response.json({ ok: true, unlocked: false });
+      state.unlocked[i] = track;
+      if (state.now?.id === track.id) state.now = track;
+      await this.setState(state);
+      return Response.json({ ok: true, unlocked: true });
     }
 
     if (url.pathname === "/api/unlock" && method === "DELETE") {
@@ -239,6 +283,14 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // 썸네일 보기: 관리자 화면은 ?k=토큰 으로 미공개 곡 이미지도 볼 수 있다
+    if (url.pathname.startsWith("/img/") && request.method === "GET") {
+      const headers = new Headers(request.headers);
+      headers.delete("x-admin"); // 밖에서 넣은 값은 믿지 않는다
+      if (env.ADMIN_TOKEN && url.searchParams.get("k") === env.ADMIN_TOKEN) headers.set("x-admin", "1");
+      return env.LIVE.get(env.LIVE.idFromName("main")).fetch(new Request(request.url, { method: "GET", headers }));
+    }
+
     if (url.pathname === "/live" || url.pathname.startsWith("/api/")) {
       // 상태를 바꾸는 요청과 행사 파일은 관리자 토큰 필요
       // 별점·댓글 작성은 참가자도 가능
@@ -250,6 +302,7 @@ export default {
           return new Response("관리자 토큰이 맞지 않습니다", { status: 401 });
         }
       }
+      // x-admin 헤더는 /img/ 경로에서만 의미가 있고, /img/ 요청은 위에서 따로 정리해 보낸다
       return env.LIVE.get(env.LIVE.idFromName("main")).fetch(request);
     }
 

@@ -94,6 +94,11 @@ main{overflow:auto;padding:18px 24px 40px}
 label{display:block;font-size:11px;color:var(--mut);margin-bottom:4px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .grid .full{grid-column:1/-1}
+.thumbrow{display:flex;gap:14px;align-items:center}
+.thumb{width:112px;height:112px;border-radius:8px;background:#0c0d11 center/cover;border:1px dashed #3a3d4a;flex:none;display:grid;place-items:center;color:var(--mut);font-size:11px;text-align:center;overflow:hidden;position:relative}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.thumb.drag{border-color:var(--acc);border-style:solid}
+.thumb .yt{position:absolute;bottom:4px;left:4px;right:4px;font-size:10px;background:rgba(0,0,0,.7);border-radius:4px;padding:1px 4px}
 .tc{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:end;margin-top:14px}
 .tc b{font-size:17px;font-variant-numeric:tabular-nums}
 .tc .row{gap:4px}
@@ -120,6 +125,27 @@ label{display:block;font-size:11px;color:var(--mut);margin-bottom:4px}
 .pop .lead{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
 .pop .lead input{width:64px}
 .hint{color:var(--mut);font-size:12px;margin:8px 0 0}
+.etabs{display:flex;gap:4px;margin-top:14px;border-bottom:1px solid var(--line)}
+.etabs button{border:0;border-radius:6px 6px 0 0;background:transparent;color:var(--mut);padding:9px 14px}
+.etabs button.on{color:var(--text);background:var(--panel);box-shadow:inset 0 -2px var(--acc)}
+.etabs+.card{margin-top:0;border-top-left-radius:0}
+.lmk{position:absolute;top:10px;bottom:10px;width:3px;margin-left:-1px;border-radius:2px;background:#8fb3ff;cursor:grab;touch-action:none}
+.lmk span{position:absolute;top:0;left:5px;font-size:10px;white-space:nowrap;color:#cfdcff;pointer-events:none;max-width:90px;overflow:hidden;text-overflow:ellipsis}
+.lmk.cur{background:#fff}
+.lyr{margin-top:14px;line-height:2.6;font-size:15px}
+.lyr .stanza{display:block;height:10px}
+.lyr .lp{position:relative;display:inline-block;padding:2px 8px;margin:0 2px;border-radius:6px;cursor:pointer;background:#1f2129;border:1px solid transparent;line-height:1.6;vertical-align:middle}
+.lyr .lp:hover{border-color:#4a4d5c}
+.lyr .lp small{position:absolute;top:-15px;left:6px;font-size:10px;color:#8fb3ff;font-variant-numeric:tabular-nums;line-height:1}
+.lyr .lp.unset{color:var(--mut);background:transparent;border-style:dashed;border-color:#33353f}
+.lyr .lp.next{border-color:var(--acc);border-style:solid}
+.lyr .lp.cur{background:#3a2a22;color:#fff}
+.lyr .lp i{display:none;position:absolute;top:-8px;right:-6px;width:16px;height:16px;border-radius:50%;background:#3a3d4a;color:#fff;font-style:normal;font-size:11px;line-height:16px;text-align:center}
+.lyr .lp:hover i{display:block}
+.lyr-tools{margin-top:12px;flex-wrap:wrap}
+.lyr-tools button{font-size:12px;padding:4px 8px}
+details.lyrin summary{cursor:pointer;color:var(--mut);font-size:12px;letter-spacing:.12em;font-weight:600}
+details.lyrin textarea{margin-top:10px;min-height:180px;font-size:14px;line-height:1.7}
 details.cuelist{margin-top:12px}
 details.cuelist summary{cursor:pointer;color:var(--mut);font-size:12px}
 table.cues{width:100%;border-collapse:collapse;margin-top:8px}
@@ -528,12 +554,12 @@ async function postProgram(force){
   if(!force&&p===lastProgram)return;
   await api('/api/program','POST',programData());lastProgram=p;
 }
+const publicTrack=t=>({...t,title:t.title||t.ytTitle||'(제목 없음)',artist:t.artist||t.ytChannel||'',sid:sessionOf(t.id)?.id||'',index:posOf(t.id),img:t.img||''});
 async function publish(t,auto){
   if(!token()){if(auto)status('관리자 토큰이 없어 참가자 앱에 공개되지 않았습니다');else status('관리자 토큰을 입력하세요');return;}
   try{
     await postProgram();
-    const s=sessionOf(t.id);
-    const r=await api('/api/now','POST',{...t,title:t.title||t.ytTitle||'(제목 없음)',artist:t.artist||t.ytChannel||'',sid:s?.id||'',index:posOf(t.id)});
+    const r=await api('/api/now','POST',publicTrack(t));
     status(`${auto?'재생 시작 → ':''}"${t.title||t.ytTitle}" 공개됨 · 접속 ${r.listeners}명`);refreshLive();
   }catch(e){status('공개 실패: '+e.message);if(auto)lastPub=null;}
 }
@@ -656,6 +682,7 @@ function renderTrack(){
   const id=cur(),t=id&&trackOf(id);
   for(const s of ['#playerBox','#transport','#trackHead'])$(s).hidden=!t;
   editCue=null;
+  if(id!==renderTrack.last){lastStamp=-1;renderTrack.last=id;}
   if(!t){
     $('#trackBody').innerHTML=`<div class="empty">
       <p><b>1. 곡 불러오기</b> — 왼쪽 「전체 곡」 탭에서 YouTube 재생목록을 불러옵니다. 영상 URL로 한 곡씩 추가할 수도 있습니다.</p>
@@ -667,7 +694,9 @@ function renderTrack(){
     return;
   }
   showPlayer(id);updateHeader();
-  $('#trackBody').innerHTML=`
+  const etabs=`<div class="etabs"><button data-etab="cue" class="${opts.etab!=='lyr'?'on':''}">타임라인 · 곡 정보</button><button data-etab="lyr" class="${opts.etab==='lyr'?'on':''}">가사 ${t.lyrics?.lines?.some(l=>l.text)?`<span class="mut">${t.lyrics.lines.filter(l=>l.t!=null).length}/${t.lyrics.lines.filter(l=>l.text).length}</span>`:''}</button></div>`;
+  if(opts.etab==='lyr'){renderLyricsTab(t,etabs);return;}
+  $('#trackBody').innerHTML=etabs+`
   <section class="card"><h3>타임라인<em>아래 띠 클릭 = 큐포인트 추가 · 마커 끌기 = 위치 조정 · 위 눈금 클릭 = 그 위치로 이동 · M 키 = 지금 위치에 추가</em></h3>
     <div class="tl" id="tl"><div class="ruler" id="ruler"></div><div class="lane" id="lane"></div><div class="ph" id="ph" hidden></div>
       <div class="pop" id="pop" hidden>
@@ -681,8 +710,12 @@ function renderTrack(){
     <details class="cuelist"><summary>큐포인트 목록 (<span id="cueCount">0</span>)</summary>
       <table class="cues"><thead><tr><th>시점</th><th>리드(초)</th><th>종류</th><th>메시지</th><th></th></tr></thead><tbody id="cueRows"></tbody></table></details>
   </section>
-  <section class="card"><h3>곡 정보</h3><div class="grid">${F.map(f=>field(f,t)).join('')}</div></section>`;
-  fillTC(t);renderTimeline(t);renderCues(t);
+  <section class="card" style="margin-top:14px"><h3>곡 정보</h3><div class="grid">
+    <div class="full thumbrow"><div class="thumb" id="thumbBox"></div>
+      <div><label>썸네일</label><div class="row"><label class="btn" style="margin:0;font-size:13px;color:var(--text)">이미지 올리기<input type="file" accept="image/*" data-img hidden></label><button data-imgdel>삭제</button></div>
+      <p class="hint">이미지를 이 칸에 끌어다 놓아도 됩니다. 정사각형으로 잘라 저장합니다. 올리지 않으면 YouTube 썸네일을 씁니다.</p></div></div>
+    ${F.map(f=>field(f,t)).join('')}</div></section>`;
+  fillTC(t);renderTimeline(t);renderCues(t);renderThumb(t);
 }
 function fillTC(t){
   const box=$('#tcBox');if(!box)return;
@@ -690,6 +723,123 @@ function fillTC(t){
     <div><label>음악 시작</label><div class="row"><input data-tc="start" value="${fmt(t.start||0)}"><button data-set="start" title="현재 재생 위치로">⌖</button></div></div>
     <div><label>음악 끝</label><div class="row"><input data-tc="end" value="${t.end!=null?fmt(t.end):''}" placeholder="${fmtD(t.duration)}"><button data-set="end" title="현재 재생 위치로">⌖</button></div></div>
     <div><label>실제 러닝타임</label><b id="rt">${fmtD(runtime(t))}</b></div>`;
+}
+
+/* ---------- 썸네일 ---------- */
+const ytThumb=id=>`https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+function renderThumb(t){
+  const box=$('#thumbBox');if(!box)return;
+  box.innerHTML=t.img?`<img src="/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}" alt="">`
+    :`<img src="${ytThumb(t.id)}" alt=""><span class="yt">YouTube 썸네일</span>`;
+}
+// 가운데를 정사각형으로 잘라 640px JPEG로
+function squareJpeg(file,size=640){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(file),img=new Image();
+    img.onload=()=>{
+      const s=Math.min(img.naturalWidth,img.naturalHeight),c=document.createElement('canvas');
+      c.width=c.height=Math.min(size,s);
+      c.getContext('2d').drawImage(img,(img.naturalWidth-s)/2,(img.naturalHeight-s)/2,s,s,0,0,c.width,c.height);
+      URL.revokeObjectURL(url);c.toBlob(b=>b?res(b):rej(new Error('이미지 변환 실패')),'image/jpeg',0.86);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);rej(new Error('이미지를 읽을 수 없습니다'));};
+    img.src=url;
+  });
+}
+async function uploadImg(t,file){
+  if(!file||!/^image\//.test(file.type))return status('이미지 파일이 아닙니다');
+  if(!token())return status('썸네일을 올리려면 관리자 토큰이 필요합니다');
+  try{
+    status('이미지 올리는 중…');
+    const blob=await squareJpeg(file);
+    const r=await fetch('/api/img/'+t.id,{method:'PUT',headers:{'content-type':'image/jpeg','x-admin-token':token()},body:blob});
+    if(!r.ok)throw new Error(r.status===401?'관리자 토큰이 틀렸습니다':await r.text());
+    t.img=(await r.json()).v;save();renderThumb(t);pushTrackUpdate(t);status('썸네일 저장됨');
+  }catch(e){status('썸네일 실패: '+e.message);}
+}
+async function deleteImg(t){
+  if(!t.img)return;
+  try{await api('/api/img/'+t.id,'DELETE');delete t.img;save();renderThumb(t);pushTrackUpdate(t);status('썸네일 삭제됨 (YouTube 썸네일로 돌아감)');}
+  catch(e){status('삭제 실패: '+e.message);}
+}
+// 이미 공개된 곡이면 참가자 화면에도 바로 반영
+const updT={};
+function pushTrackUpdate(t,delay=0){
+  if(!token()||location.protocol==='file:')return;
+  clearTimeout(updT[t.id]);
+  updT[t.id]=setTimeout(()=>api('/api/track-update','POST',publicTrack(t)).catch(()=>{}),delay);
+}
+mainElDrop();
+function mainElDrop(){
+  document.addEventListener('dragover',e=>{const b=e.target.closest&&e.target.closest('#thumbBox');if(b){e.preventDefault();b.classList.add('drag');}});
+  document.addEventListener('dragleave',e=>{const b=e.target.closest&&e.target.closest('#thumbBox');if(b)b.classList.remove('drag');});
+  document.addEventListener('drop',e=>{const b=e.target.closest&&e.target.closest('#thumbBox');if(!b)return;e.preventDefault();b.classList.remove('drag');const t=trackOf(cur());if(t)uploadImg(t,e.dataTransfer.files[0]);});
+}
+
+/* ---------- 가사 ---------- */
+let lastStamp=-1;
+const lyrLines=t=>t.lyrics?.lines||[];
+function applyLyrics(t,raw){
+  const old=lyrLines(t).filter(l=>l.text).map(l=>({...l}));
+  const out=[];let hasLrc=false;
+  for(let line of raw.split(/\r?\n/)){
+    line=line.trim();
+    if(/^\[[a-z]+:.*\]$/i.test(line))continue;           // LRC 머리말 [ar:..]
+    let tm=null,text=line;
+    const m=line.match(/^\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)$/);
+    if(m){hasLrc=true;tm=(+m[1])*60+(+m[2]);text=m[3].trim();}
+    if(!text){if(out.length&&out.at(-1).text!=='')out.push({text:'',t:null});continue;}
+    if(tm==null){const j=old.findIndex(o=>o.text===text);if(j>=0){tm=old[j].t;old.splice(0,j+1);}} // 같은 구절은 타이밍 유지
+    out.push({text,t:tm});
+  }
+  while(out.length&&out.at(-1).text==='')out.pop();
+  t.lyrics={raw:hasLrc?out.map(l=>l.text).join('\n'):raw,lines:out};
+  lastStamp=-1;
+}
+const nextStampIdx=t=>{const L=lyrLines(t);for(let i=lastStamp+1;i<L.length;i++)if(L[i].text)return i;return -1;};
+function curLyricIdx(t,now){let c=-1;lyrLines(t).forEach((l,i)=>{if(l.text&&l.t!=null&&l.t<=now&&(c<0||l.t>=lyrLines(t)[c].t))c=i;});return c;}
+function renderLyricsTab(t,etabs){
+  const L=lyrLines(t),has=L.some(l=>l.text);
+  $('#trackBody').innerHTML=etabs+`
+  <section class="card"><details class="lyrin" ${has?'':'open'}><summary>가사 입력 <em class="mut" style="font-style:normal;letter-spacing:0;font-weight:400">한 줄 = 한 구절 · 빈 줄 = 단락 · LRC 형식([01:23.45]가사)도 됩니다</em></summary>
+    <textarea id="lyrIn" placeholder="가사를 붙여넣으세요">${esc(t.lyrics?.raw||'')}</textarea>
+    <div class="row" style="margin-top:8px"><button class="primary" data-lapply>구절에 반영</button><span class="hint" style="margin:0">글을 고쳐도 같은 구절의 타이밍은 그대로 남습니다</span></div></details></section>
+  <section class="card" style="margin-top:14px"><h3>가사 싱크<em>재생하면서 구절을 누르면 지금 시각이 찍힙니다 · Enter = 다음 구절 찍기 · 마커 끌기 = 미세 조정 · 눈금·빈 곳 클릭 = 이동</em></h3>
+    <div class="tl"><div class="ruler" id="lruler"></div><div class="lane" id="llane" style="cursor:pointer"></div><div class="ph" id="lph" hidden></div></div>
+    <div class="row lyr-tools"><span class="mut" style="font-size:12px">전체 이동</span><button data-lshift="-0.5">−0.5초</button><button data-lshift="-0.1">−0.1</button><button data-lshift="0.1">+0.1</button><button data-lshift="0.5">+0.5초</button>
+      <span style="flex:1"></span><span id="lyrProg" class="mut" style="font-size:12px"></span><button data-lexport>LRC 내보내기</button><button data-lclear>타이밍 모두 지우기</button></div>
+    <div class="lyr" id="lyrBox"></div></section>`;
+  renderLyrics(t);
+}
+function renderLyrics(t){
+  const box=$('#lyrBox');if(!box)return;
+  const L=lyrLines(t),nx=nextStampIdx(t),cu=playerId===t.id&&ptime()!=null?curLyricIdx(t,ptime()):-1;
+  box.innerHTML=L.some(l=>l.text)?L.map((l,i)=>l.text
+      ?`<span class="lp ${l.t==null?'unset':''} ${i===nx?'next':''} ${i===cu?'cur':''}" data-li="${i}">${l.t!=null?`<small>${fmt(l.t)}</small>`:''}${esc(l.text)}${l.t!=null?`<i data-lx="${i}" title="타이밍 지우기">×</i>`:''}</span>`
+      :'<span class="stanza"></span>').join(' ')
+    :'<span class="mut">위 「가사 입력」에 가사를 넣고 「구절에 반영」을 누르세요.</span>';
+  const set=L.filter(l=>l.text&&l.t!=null).length,all=L.filter(l=>l.text).length;
+  if($('#lyrProg'))$('#lyrProg').textContent=all?`${set} / ${all} 구절 싱크`:'';
+  renderLyrTimeline(t);
+}
+function renderLyrTimeline(t){
+  const lane=$('#llane'),ruler=$('#lruler');if(!lane)return;
+  const D=tlDur(t);
+  if(!D){ruler.innerHTML='';lane.innerHTML='<div class="tlmsg">곡 길이를 아직 모릅니다 — 한 번 재생하면 타임라인이 생깁니다</div>';return;}
+  const pct=x=>Math.min(100,Math.max(0,x/D*100))+'%';
+  const step=D<=180?15:D<=420?30:60;let r='';
+  for(let x=0;x<D-step/3;x+=step)r+=`<span style="left:${pct(x)}">${fmtD(x)}</span>`;
+  ruler.innerHTML=r;
+  lane.innerHTML=lyrLines(t).map((l,i)=>l.text&&l.t!=null?`<div class="lmk" data-lmk="${i}" style="left:${pct(l.t)}"><span>${esc(l.text)}</span></div>`:'').join('');
+}
+function stampLyric(t,i){
+  if(playerId!==t.id||![1,2,3].includes(pstate()))return status('이 곡을 먼저 재생하세요');
+  const now=ptime();if(now==null)return;
+  lyrLines(t)[i].t=+now.toFixed(2);lastStamp=i;save();renderLyrics(t);
+}
+function lrcText(t){
+  const tc=x=>{const m=Math.floor(x/60),s=x-m*60;return `${pad(m)}:${s.toFixed(2).padStart(5,'0')}`;};
+  return [`[ti:${t.title||t.ytTitle}]`,`[ar:${t.artist||''}]`,...lyrLines(t).filter(l=>l.text).map(l=>(l.t!=null?`[${tc(l.t)}]`:'')+l.text)].join('\n');
 }
 
 /* ---------- 타임라인 ---------- */
@@ -745,6 +895,15 @@ function addCueAt(t,time,open){
 const mainEl=$('main');
 mainEl.addEventListener('pointerdown',e=>{
   const t=trackOf(cur());if(!t)return;
+  const lmk=e.target.closest('.lmk'),llane=e.target.closest('#llane'),lruler=e.target.closest('#lruler');
+  if(lmk||llane||lruler){
+    const D=tlDur(t);if(!D)return;
+    const rect=$('#llane').getBoundingClientRect(),timeAt=x=>Math.max(0,Math.min(D,(x-rect.left)/rect.width*D));
+    e.preventDefault();
+    if(lmk){drag={kind:'lyr',c:lyrLines(t)[+lmk.dataset.lmk],el:lmk,x0:e.clientX,moved:false,timeAt,D};lmk.setPointerCapture(e.pointerId);return;}
+    if(playerId===t.id&&live())player.seekTo(timeAt(e.clientX),true);else status('이 곡을 먼저 재생하세요');
+    return;
+  }
   if(e.target.closest('#pop'))return;
   const mk=e.target.closest('.mk'),lane=e.target.closest('#lane'),ruler=e.target.closest('#ruler');
   if(editCue&&!mk)closePop();
@@ -759,10 +918,16 @@ mainEl.addEventListener('pointerdown',e=>{
 window.addEventListener('pointermove',e=>{
   if(!drag)return;
   if(Math.abs(e.clientX-drag.x0)>3)drag.moved=true;
-  if(drag.moved){drag.c.t=+drag.timeAt(e.clientX).toFixed(2);drag.el.style.left=(drag.c.t/drag.D*100)+'%';}
+  if(drag.moved){drag.c.t=+drag.timeAt(e.clientX).toFixed(2);drag.el.style.left=(drag.c.t/drag.D*100)+'%';
+    if(drag.kind==='lyr'){const sm=document.querySelector(`.lp[data-li="${drag.el.dataset.lmk}"] small`);if(sm)sm.textContent=fmt(drag.c.t);}}
 });
 window.addEventListener('pointerup',()=>{
   if(!drag)return;const d=drag;drag=null;const t=trackOf(cur());if(!t)return;
+  if(d.kind==='lyr'){
+    if(d.moved){save();renderLyrics(t);}
+    else if(playerId===t.id&&live())player.seekTo(Math.max(0,d.c.t-1),true);
+    return;
+  }
   if(d.moved){sortCues(t);refreshCues(t);if(editCue===d.c)openPop(t,d.c);}
   else openPop(t,d.c);
 });
@@ -770,7 +935,7 @@ window.addEventListener('pointerup',()=>{
 mainEl.addEventListener('input',e=>{
   const t=trackOf(cur());if(!t)return;
   const k=e.target.dataset.k;
-  if(k){t[k]=e.target.value;if(k==='title'||k==='artist')updateHeader();save();return;}
+  if(k){t[k]=e.target.value;if(k==='title'||k==='artist')updateHeader();save();if(k!=='reason')pushTrackUpdate(t,1500);return;}
   const ck=e.target.dataset.c;
   if(ck==='msg'||ck==='lead'){const c=t.cues[+e.target.closest('tr').dataset.j];c[ck]=ck==='lead'?(+e.target.value||0):e.target.value;renderTimeline(t);save();return;}
   const pk=e.target.dataset.pop;
@@ -784,6 +949,7 @@ mainEl.addEventListener('change',e=>{
   const t=trackOf(cur());
   if(e.target.id==='optAuto'){opts.auto=e.target.checked;saveOpts();return;}
   if(!t)return;
+  if(e.target.dataset.img!==undefined){uploadImg(t,e.target.files[0]);e.target.value='';return;}
   const tc=e.target.dataset.tc;
   if(tc){const v=parseTC(e.target.value);t[tc]=tc==='end'?v:(v||0);fillTC(t);renderTimeline(t);save();return;}
   const ck=e.target.dataset.c;
@@ -795,9 +961,19 @@ mainEl.addEventListener('keydown',e=>{
   if(e.target.closest('#pop')&&(e.key==='Enter'||e.key==='Escape')){e.preventDefault();closePop();}
 });
 mainEl.addEventListener('click',e=>{
+  const lx=e.target.closest('[data-lx]'),lp=e.target.closest('.lp');
+  if(lx||lp){const t=trackOf(cur());if(!t)return;
+    if(lx){lyrLines(t)[+lx.dataset.lx].t=null;save();renderLyrics(t);return;}
+    stampLyric(t,+lp.dataset.li);return;}
   const b=e.target.closest('button');if(!b)return;
   const t=trackOf(cur());if(!t)return;
   if('pub' in b.dataset){publish(t,false);return;}
+  if(b.dataset.etab){opts.etab=b.dataset.etab;saveOpts();renderTrack();return;}
+  if('lapply' in b.dataset){applyLyrics(t,$('#lyrIn').value);save();renderTrack();status(`가사 ${lyrLines(t).filter(l=>l.text).length}구절 반영`);return;}
+  if(b.dataset.lshift){const d=+b.dataset.lshift;lyrLines(t).forEach(l=>{if(l.t!=null)l.t=Math.max(0,+(l.t+d).toFixed(2));});save();renderLyrics(t);return;}
+  if('lclear' in b.dataset){if(!confirm('이 곡의 가사 타이밍을 모두 지웁니다.'))return;lyrLines(t).forEach(l=>l.t=null);lastStamp=-1;save();renderLyrics(t);return;}
+  if('lexport' in b.dataset){download(`${t.artist||''} - ${t.title||t.ytTitle}.lrc`.replace(/[\\/:*?"<>|]/g,'_'),lrcText(t),'text/plain');return;}
+  if('imgdel' in b.dataset){deleteImg(t);return;}
   if(b.dataset.tp){
     const tp=b.dataset.tp;
     if(tp==='prev')advance(-1,true);
@@ -827,6 +1003,7 @@ mainEl.addEventListener('click',e=>{
 document.addEventListener('keydown',e=>{
   if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||$('#evDlg').open)return;
   const t=trackOf(cur());if(!t||!live())return;
+  if(e.key==='Enter'&&opts.etab==='lyr'){e.preventDefault();const i=nextStampIdx(t);if(i<0)return status('마지막 구절까지 찍었습니다');stampLyric(t,i);return;}
   if(e.code==='KeyM'){e.preventDefault();if(playerId!==t.id)return status('이 곡을 먼저 재생하세요');const now=ptime();if(now!=null)addCueAt(t,now,false);}
   if(e.code==='Space'){e.preventDefault();if(playerId===t.id)pstate()===1?player.pauseVideo():player.playVideo();}
 });
@@ -840,13 +1017,19 @@ setInterval(()=>{
   const pt=trackOf(playerId),away=!!(t&&pt&&playerId!==t.id&&(ps===1||ps===2||ps===3));
   $('#elsewhere').hidden=!away;if(away)$('#elseTitle').textContent=pt.title||pt.ytTitle;
   // 곡 길이를 플레이어에서 알게 되면 저장
-  if(pt&&!pt.duration&&live()){const d=player.getDuration();if(d){pt.duration=d;pt.durSrc='player';save();if(t===pt){fillTC(t);renderTimeline(t);}}}
+  if(pt&&!pt.duration&&live()){const d=player.getDuration();if(d){pt.duration=d;pt.durSrc='player';save();if(t===pt){fillTC(t);renderTimeline(t);renderLyrTimeline(t);}}}
   // 음악 끝 지점에 도달하면 다음 곡
   if(pt&&opts.auto&&ps===1&&pt.end!=null&&now>=pt.end)advance(1,false);
   // 플레이헤드 · 카운트다운
   const cd=$('#cd'),ph=$('#ph');
-  if(!t||now==null||playerId!==t.id){cd.hidden=true;if(ph)ph.hidden=true;return;}
+  if(!t||now==null||playerId!==t.id){cd.hidden=true;if(ph)ph.hidden=true;if($('#lph'))$('#lph').hidden=true;return;}
   const D=tlDur(t);if(ph){ph.hidden=!D;if(D)ph.style.left=Math.min(100,now/D*100)+'%';}
+  const lph=$('#lph');
+  if(lph){lph.hidden=!D;if(D)lph.style.left=Math.min(100,now/D*100)+'%';
+    const ci=curLyricIdx(t,now);
+    document.querySelectorAll('.lp.cur').forEach(x=>{if(+x.dataset.li!==ci)x.classList.remove('cur');});
+    if(ci>=0)document.querySelector(`.lp[data-li="${ci}"]`)?.classList.add('cur');
+    document.querySelectorAll('.lmk').forEach(x=>x.classList.toggle('cur',+x.dataset.lmk===ci));}
   const c=t.cues.find(c=>now>=c.t-c.lead&&now<c.t+1);
   if(c){cd.hidden=false;cd.innerHTML=now<c.t?`<div><b>${Math.ceil(c.t-now)}</b><span>${esc(c.type)}</span></div>`:`<b class="hit">${esc(c.msg||c.type)}</b>`;}
   else cd.hidden=true;

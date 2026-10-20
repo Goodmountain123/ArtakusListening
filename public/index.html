@@ -37,16 +37,34 @@ header h1{font-size:12px;letter-spacing:.18em;margin:0}
 .waiting{color:var(--mut);text-align:center;padding:26px 0}
 
 /* ===== 곡 상세 (지금 곡 카드와 팝업에서 같이 씀) ===== */
-.rate{margin:18px 0 4px;padding:14px;border-radius:12px;background:#121318;text-align:center}
-.stars{display:flex;justify-content:center;gap:6px}
-.stars button{color:#3a3c46;padding:2px}
-.stars button svg{width:34px;height:34px}
-.stars button.on{color:var(--star)}
-.rate-info{font-size:12px;color:var(--mut);margin-top:6px;min-height:18px}
+.myrate{display:flex;align-items:center;gap:8px;margin-top:16px;font-size:12px;color:var(--dim)}
+.myrate .stars{display:flex;gap:1px}
+.myrate .stars button{color:#34363f;padding:1px}
+.myrate .stars button svg{width:15px;height:15px}
+.myrate .stars button.on{color:var(--star)}
+.myrate .rate-info{color:var(--dim)}
+.cm-open{display:flex;align-items:center;gap:8px;width:100%;margin-top:16px;padding:12px 14px;border-radius:12px;background:#202129;color:#d6d7dc;font-size:14px;text-align:left}
+.cm-open svg{width:16px;height:16px;color:var(--mut)}
+.cm-open .go{margin-left:auto;font-size:12px;color:var(--mut)}
+/* 돌아가는 CD */
+.disc-wrap{position:relative;width:min(220px,62vw);aspect-ratio:1;margin:4px auto 18px}
+.disc{position:absolute;inset:0;border-radius:50%;overflow:hidden;background:radial-gradient(circle,#2a2b33,#15161b);animation:spin 9s linear infinite;box-shadow:0 14px 34px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.07)}
+.disc img{width:100%;height:100%;object-fit:cover;display:block}
+.disc-sheen{position:absolute;inset:0;border-radius:50%;pointer-events:none;mix-blend-mode:screen;
+  background:conic-gradient(from 20deg,rgba(255,255,255,0) 0deg,rgba(255,255,255,.22) 25deg,rgba(140,210,255,.14) 45deg,rgba(255,255,255,0) 80deg,rgba(255,255,255,0) 190deg,rgba(255,170,220,.14) 215deg,rgba(255,255,255,.2) 235deg,rgba(255,255,255,0) 270deg),
+  repeating-radial-gradient(circle,rgba(255,255,255,.035) 0 1px,transparent 1px 3px)}
+.disc-hub{position:absolute;left:50%;top:50%;width:30%;height:30%;transform:translate(-50%,-50%);border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,var(--panel) 0 27%,rgba(0,0,0,.35) 28% 31%,rgba(225,228,236,.55) 32% 62%,rgba(255,255,255,.12) 63% 100%);box-shadow:0 0 0 1px rgba(0,0,0,.25)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.disc{animation:none}}
+.now .head{text-align:center}
+.cv{width:40px;height:40px;border-radius:6px;object-fit:cover;background:#202129;display:block}
+.p-head{display:flex;gap:14px;align-items:center}
+.p-head img{width:72px;height:72px;border-radius:10px;object-fit:cover;background:#202129;flex:none}
 .sect{margin-top:18px}
 .sect b{display:block;font-size:10px;letter-spacing:.16em;color:var(--mut);margin-bottom:4px}
 .sect div{font-size:14px;white-space:pre-wrap;color:#d6d7dc}
-.cm-head{display:flex;justify-content:space-between;align-items:baseline;margin-top:24px;padding-top:16px;border-top:1px solid var(--line)}
+.cm-head{display:flex;justify-content:space-between;align-items:baseline;margin-top:20px;padding-top:16px;border-top:1px solid var(--line)}
 .cm-head b{font-size:13px}
 .cm-head button{font-size:12px;color:var(--mut)}
 .cm-list{margin:6px 0 0;padding:0;list-style:none}
@@ -84,7 +102,7 @@ ol{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
 ol>li{border-top:1px solid #202129}
 ol>li:first-child{border-top:0}
 li.tr{display:grid;grid-template-columns:1fr auto;align-items:center}
-.rowbtn{display:grid;grid-template-columns:26px 1fr;gap:10px;align-items:center;padding:11px 0 11px 18px;text-align:left;min-width:0}
+.rowbtn{display:grid;grid-template-columns:22px 40px 1fr;gap:10px;align-items:center;padding:11px 0 11px 18px;text-align:left;min-width:0}
 .n{color:var(--mut);font-variant-numeric:tabular-nums;font-size:12px}
 .tt{min-width:0}
 .tt span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -97,7 +115,7 @@ li.tr{display:grid;grid-template-columns:1fr auto;align-items:center}
 .more{font-size:12px;color:#c9cad1;background:#24262f;border-radius:99px;padding:5px 10px;white-space:nowrap}
 li.playing{background:#22191a}
 li.playing .n{color:var(--acc)}
-li.lock{display:grid;grid-template-columns:26px 1fr auto;gap:10px;align-items:center;padding:13px 18px;color:var(--dim)}
+li.lock{display:grid;grid-template-columns:22px 1fr auto;gap:10px;align-items:center;padding:13px 18px;color:var(--dim)}
 .lockbar{height:10px;border-radius:5px;background:repeating-linear-gradient(90deg,var(--panel2) 0 8px,#181920 8px 12px);width:var(--w,60%)}
 .lock svg{width:14px;height:14px}
 li.lock.next .lockbar{background:repeating-linear-gradient(90deg,#2a2224 0 8px,#1d1a1c 8px 12px)}
@@ -140,7 +158,7 @@ const I={
 };
 const lockW=(sid,i)=>{let h=0;for(const c of sid+i)h=(h*31+c.charCodeAt(0))>>>0;return 38+h%45;};
 const fmtTime=at=>new Date(at).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'});
-const NOW_COMMENTS=5; // 지금 곡 카드에는 최근 댓글 몇 개만
+const thumb=t=>t.img?`/img/${encodeURIComponent(t.id)}?v=${encodeURIComponent(t.img)}`:`https://i.ytimg.com/vi/${encodeURIComponent(t.id)}/hqdefault.jpg`;
 
 /* ---------- 이 기기 (익명 식별 · 내 별점 · 닉네임) ---------- */
 const store={get(k,d){try{return JSON.parse(localStorage.getItem('lp_'+k))??d;}catch(e){return d;}},set(k,v){try{localStorage.setItem('lp_'+k,JSON.stringify(v));}catch(e){}}};
@@ -155,20 +173,15 @@ const sessions=()=>S.program?.sessions||[];
 const trackById=id=>S.unlocked.find(t=>t.id===id);
 
 /* ---------- 곡 상세 블록 (ctx: 'now' = 지금 곡 카드, 'pop' = 팝업) ---------- */
+// 내가 평가한 뒤에만 평균을 보여준다 (선입견 줄이기)
 function rateText(id){
-  const mine=myRates[id]||0,d=D[id];
-  if(!mine)return '별을 눌러 평가해 주세요';
-  return d&&d.n?`내 별점 ${mine}점 · 평균 ${d.avg} (${d.n}명)`:`내 별점 ${mine}점`;
+  const d=D[id];
+  return myRates[id]&&d&&d.n?`평균 ${d.avg} · ${d.n}명`:'';
 }
-function cmItems(id,ctx){
+function cmItems(id){
   const d=D[id];if(!d)return '<li class="cm-empty">불러오는 중…</li>';
-  let list=d.comments;
-  if(ctx==='now'&&list.length>NOW_COMMENTS)list=list.slice(-NOW_COMMENTS);
+  const list=d.comments;
   return list.length?list.map(c=>`<li><div class="who"><b>${esc(c.nick)}</b>${fmtTime(c.at)}</div><div class="txt">${esc(c.text)}</div></li>`).join(''):'<li class="cm-empty">첫 댓글을 남겨주세요</li>';
-}
-function cmMore(id,ctx){
-  const n=D[id]?.comments.length||0;
-  return ctx==='now'&&n>NOW_COMMENTS?`<button data-open="${esc(id)}">전체 ${n}개 보기</button>`:'';
 }
 function formHTML(){
   return `${nick?`<div class="row"><span class="nick">닉네임 <b>${esc(nick)}</b><button type="button" data-renick>바꾸기</button></span></div>`:`<input class="nick-in" maxlength="20" placeholder="닉네임" autocomplete="nickname">`}
@@ -179,23 +192,23 @@ function detailBlock(t,ctx){
   const mine=myRates[t.id]||0;
   const info=[['곡 해설',t.notes],['관련곡',t.related]].filter(([,v])=>v);
   const count=D[t.id]?D[t.id].comments.length:(S.counts[t.id]||0);
+  const rate=`<div class="myrate"><span>내 별점</span><span class="stars">${[1,2,3,4,5].map(i=>`<button data-rate="${i}" class="${i<=mine?'on':''}" aria-label="${i}점">${I.star}</button>`).join('')}</span><span class="rate-info">${rateText(t.id)}</span></div>`;
+  // 지금 곡 카드: 댓글은 팝업에서 / 팝업: 댓글 목록과 입력
+  const cm=ctx==='now'
+    ?`<button class="cm-open" data-open="${esc(t.id)}">${I.cm}<span>댓글 <span class="cm-count">${count}</span></span><span class="go">보기 · 남기기 ›</span></button>`
+    :`<div class="cm-head"><b>댓글 <span class="cm-count">${count}</span></b></div><ul class="cm-list">${cmItems(t.id)}</ul><form class="cm-form">${formHTML()}</form>`;
   return `<div class="detail" data-ctx="${ctx}" data-id="${esc(t.id)}">
-    <div class="rate"><div class="stars">${[1,2,3,4,5].map(i=>`<button data-rate="${i}" class="${i<=mine?'on':''}" aria-label="${i}점">${I.star}</button>`).join('')}</div>
-      <div class="rate-info">${rateText(t.id)}</div></div>
     ${info.map(([k,v])=>`<div class="sect"><b>${k}</b><div>${esc(v)}</div></div>`).join('')}
-    <div class="cm-head"><b>댓글 <span class="cm-count">${count}</span></b><span class="cm-more">${cmMore(t.id,ctx)}</span></div>
-    <ul class="cm-list">${cmItems(t.id,ctx)}</ul>
-    <form class="cm-form">${formHTML()}</form></div>`;
+    ${rate}${cm}</div>`;
 }
 // 상세 데이터가 바뀌면 화면에 떠 있는 모든 상세 블록을 부분 갱신 (입력 중인 글은 그대로)
 function refreshDetail(id){
   $$(`.detail[data-id="${CSS.escape(id)}"]`).forEach(el=>{
-    const ctx=el.dataset.ctx,mine=myRates[id]||0;
+    const mine=myRates[id]||0,set=(sel,f)=>{const x=el.querySelector(sel);if(x)f(x);};
     el.querySelectorAll('.stars button').forEach(b=>b.classList.toggle('on',+b.dataset.rate<=mine));
-    el.querySelector('.rate-info').textContent=rateText(id);
-    el.querySelector('.cm-count').textContent=D[id]?D[id].comments.length:(S.counts[id]||0);
-    el.querySelector('.cm-list').innerHTML=cmItems(id,ctx);
-    el.querySelector('.cm-more').innerHTML=cmMore(id,ctx);
+    set('.rate-info',x=>x.textContent=rateText(id));
+    set('.cm-count',x=>x.textContent=D[id]?D[id].comments.length:(S.counts[id]||0));
+    set('.cm-list',x=>x.innerHTML=cmItems(id));
   });
 }
 async function loadDetail(id){
@@ -220,8 +233,10 @@ function renderStage(){
   const meta=[t.artist,t.album,t.year].filter(Boolean).map(esc).join(' · ');
   $('#stage').innerHTML=`<section class="stage${s?'':' plain'}">
     ${s?`<div class="stage-head"><div class="stage-num">SESSION ${pad(ss.indexOf(s)+1)}</div><h2 class="stage-title">${esc(s.name)}</h2>${s.desc?`<p class="stage-desc">${esc(s.desc)}</p>`:''}</div>`:''}
-    <div class="now"><div class="label"><span class="eq"><b></b><b></b><b></b></span>NOW PLAYING</div>
-      <h2>${esc(t.title)}</h2><div class="meta">${meta}</div>
+    <div class="now">
+      <div class="disc-wrap"><div class="disc"><img src="${thumb(t)}" alt="" onerror="this.style.visibility='hidden'"></div><div class="disc-sheen"></div><div class="disc-hub"></div></div>
+      <div class="head"><div class="label"><span class="eq"><b></b><b></b><b></b></span>NOW PLAYING</div>
+      <h2>${esc(t.title)}</h2><div class="meta">${meta}</div></div>
       ${detailBlock(t,'now')}</div></section>`;
   if(prevId===t.id&&prevText)$('#stage .cm-in').value=prevText;
   if(!D[t.id])loadDetail(t.id);
@@ -237,7 +252,7 @@ function rowIcons(t){
 }
 function trackRow(t,n){
   return `<li class="tr${t.id===S.now?.id?' playing':''}" id="t-${esc(t.id)}">
-    <button class="rowbtn" data-open="${esc(t.id)}"><span class="n">${n}</span><span class="tt"><span>${esc(t.title)}</span><small>${esc(t.artist)}</small></span></button>
+    <button class="rowbtn" data-open="${esc(t.id)}"><span class="n">${n}</span><img class="cv" src="${thumb(t)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'"><span class="tt"><span>${esc(t.title)}</span><small>${esc(t.artist)}</small></span></button>
     ${rowIcons(t)}</li>`;
 }
 let firstScroll=true,lastNow=null;
@@ -288,7 +303,7 @@ function openSheet(id){
   const meta=[t.artist,t.album,t.year].filter(Boolean).map(esc).join(' · ');
   $('#panel').innerHTML=`<button class="close" data-close aria-label="닫기">${I.x}</button>
     ${s?`<div class="p-sess">SESSION ${pad(ss.indexOf(s)+1)} · ${esc(s.name)}</div>`:''}
-    <div class="p-title">${esc(t.title)}</div><div class="p-meta">${meta}</div>${detailBlock(t,'pop')}`;
+    <div class="p-head"><img src="${thumb(t)}" alt="" onerror="this.style.visibility='hidden'"><div><div class="p-title">${esc(t.title)}</div><div class="p-meta">${meta}</div></div></div>${detailBlock(t,'pop')}`;
   $('#panel').scrollTop=0;$('#sheet').hidden=false;document.body.classList.add('lock');
   loadDetail(id);
 }
