@@ -37,6 +37,12 @@ header h1{font-size:12px;letter-spacing:.18em;margin:0}
 .waiting{color:var(--mut);text-align:center;padding:26px 0}
 
 /* ===== 곡 상세 (지금 곡 카드와 팝업에서 같이 씀) ===== */
+.react{display:flex;align-items:center;gap:6px;margin-top:10px;padding:8px 10px 8px 14px;border-radius:14px;background:rgba(0,0,0,.28);border:1px solid #2c2427}
+.react>span{font-size:12px;color:var(--mut);flex:1;white-space:nowrap}
+.react button{position:relative;width:38px;height:38px;border-radius:50%;background:#24262f;font-size:20px;line-height:38px;text-align:center;transition:transform .12s;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+.react button:active{transform:scale(.86)}
+.react .fly{position:absolute;left:50%;top:0;pointer-events:none;font-size:20px;animation:fly .8s ease-out forwards}
+@keyframes fly{from{transform:translate(-50%,0) scale(1);opacity:1}to{transform:translate(-50%,-46px) scale(1.4);opacity:0}}
 .myrate{display:flex;align-items:center;gap:8px;margin-top:16px;font-size:12px;color:var(--dim)}
 .myrate .stars{display:flex;gap:1px}
 .myrate .stars button{color:#34363f;padding:1px}
@@ -185,6 +191,8 @@ let liked=store.get('liked',{});      // 내가 좋아요 누른 댓글
 const moreOpen=new Set();             // 더보기 펼친 곡
 const repliesOpen=new Set();          // 답글 펼친 댓글
 const TOP_N=5;
+const REACTS=[['heart','❤️'],['party','🎉'],['clap','👏'],['smile','😄'],['dance','💃']];
+let reactLast=0;
 
 let S={program:{sessions:[]},now:null,unlocked:[],counts:{}};
 const D={};            // 곡별 상세 (별점 요약 · 댓글)
@@ -273,7 +281,8 @@ function renderStage(){
       <div class="disc-wrap"><div class="disc"><img src="${thumb(t)}" alt="" onerror="this.style.visibility='hidden'"></div><div class="disc-sheen"></div><div class="disc-hub"></div></div>
       <div class="head"><div class="label"><span class="eq"><b></b><b></b><b></b></span>NOW PLAYING</div>
       <h2>${esc(t.title)}</h2><div class="meta">${meta}</div></div>
-      ${detailBlock(t,'now')}</div></section>`;
+      ${detailBlock(t,'now')}</div>
+    <div class="react"><span>노래에 반응해보세요!</span>${REACTS.map(([k,e])=>`<button data-react="${k}" aria-label="${k}">${e}</button>`).join('')}</div></section>`;
   if(!D[t.id])loadDetail(t.id);
 }
 
@@ -370,6 +379,14 @@ window.addEventListener('popstate',()=>{if(composing)closeCompose(true);else clo
 
 /* ---------- 클릭 · 별점 · 댓글 ---------- */
 document.addEventListener('click',async e=>{
+  const rb2=e.target.closest('[data-react]');
+  if(rb2){
+    const now=Date.now();if(now-reactLast<180)return;reactLast=now;
+    const fly=document.createElement('span');fly.className='fly';fly.textContent=rb2.textContent;rb2.appendChild(fly);setTimeout(()=>fly.remove(),800);
+    if(navigator.vibrate)try{navigator.vibrate(8);}catch(err){}
+    fetch('/api/react',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({cid,e:rb2.dataset.react})}).catch(()=>{});
+    return;
+  }
   const o=e.target.closest('[data-open]');if(o){openSheet(o.dataset.open);return;}
   if(e.target.closest('[data-close]')){closeSheet();return;}
   if(e.target.closest('[data-cclose]')){closeCompose();return;}

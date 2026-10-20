@@ -13,6 +13,7 @@ const pickSession = (s) => ({
 const empty = () => ({ program: { sessions: [] }, now: null, unlocked: [], counts: {} });
 const MAX_EVENT_BYTES = 1_900_000;
 const MAX_IMG_BYTES = 600_000;
+const REACTIONS = ["heart", "party", "clap", "smile", "dance"];
 const IMG_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const str = (v, max) => String(v ?? "").trim().slice(0, max);
 // 보이는 댓글: 숨김 처리 안 됐고, 답글이면 원 댓글도 살아 있어야 한다
@@ -30,6 +31,7 @@ export class LiveRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.lastComment = new Map(); // 참가자별 마지막 댓글 시각 (도배 방지)
+    this.reactHits = new Map();   // 참가자별 최근 반응 시각들 (연타 제한)
   }
 
   async getState() {
@@ -165,6 +167,20 @@ export class LiveRoom extends DurableObject {
       await this.ctx.storage.put("state", state);
       this.send({ type: "comment", id, comment: pubComment(comment), count: state.counts[id] });
       return Response.json({ ok: true, comment: pubComment(comment, cid) });
+    }
+
+    // ---------- 참가자: 노래 반응 (저장하지 않고 송출 화면으로 바로 보냄) ----------
+    if (url.pathname === "/api/react" && method === "POST") {
+      const b = await request.json();
+      const cid = str(b.cid, 64), e = str(b.e, 10);
+      if (!cid || !REACTIONS.includes(e)) return new Response("잘못된 요청", { status: 400 });
+      const now = Date.now();
+      const hits = (this.reactHits.get(cid) || []).filter((t) => now - t < 3000);
+      if (hits.length >= 10) return new Response("잠깐 쉬었다가 눌러주세요", { status: 429 });
+      hits.push(now);
+      this.reactHits.set(cid, hits);
+      this.send({ type: "react", e });
+      return Response.json({ ok: true });
     }
 
     // ---------- 참가자: 댓글 좋아요 (누를 때마다 켜고 끄기) ----------
@@ -325,7 +341,7 @@ export default {
     if (url.pathname === "/live" || url.pathname.startsWith("/api/")) {
       // 상태를 바꾸는 요청과 행사 파일은 관리자 토큰 필요
       // 별점·댓글 작성은 참가자도 가능
-      const participantWrite = request.method === "POST" && ["/api/rate", "/api/comment", "/api/like"].includes(url.pathname);
+      const participantWrite = request.method === "POST" && ["/api/rate", "/api/comment", "/api/like", "/api/react"].includes(url.pathname);
       const needsToken = url.pathname.startsWith("/api/events") || (request.method !== "GET" && !participantWrite);
       if (needsToken) {
         const token = request.headers.get("x-admin-token");
