@@ -14,6 +14,9 @@ const empty = () => ({ program: { sessions: [] }, now: null, unlocked: [], count
 const MAX_EVENT_BYTES = 1_900_000;
 const MAX_IMG_BYTES = 600_000;
 const REACTIONS = ["heart", "party", "clap", "smile", "dance"];
+// 배경 영상: 1.5MB 조각으로 나눠 저장 (저장소 한 칸 최대 2MB)
+const MEDIA_CHUNK = 1_500_000;
+const MEDIA_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/ogg"];
 const IMG_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const str = (v, max) => String(v ?? "").trim().slice(0, max);
 // 보이는 댓글: 숨김 처리 안 됐고, 답글이면 원 댓글도 살아 있어야 한다
@@ -87,6 +90,78 @@ export class LiveRoom extends DurableObject {
       state.program = { sessions: (body.sessions || []).map(pickSession) };
       await this.setState(state);
       return Response.json({ ok: true });
+    }
+
+    // ---------- 배경 영상 ----------
+    const mm = url.pathname.match(/^\/(api\/)?media(?:\/([\w-]+))?(\/done)?$/);
+    if (mm) {
+      const isApi = !!mm[1], vid = mm[2], storage = this.ctx.storage;
+      // 목록 (관리자)
+      if (isApi && !vid && method === "GET") {
+        const metas = await storage.list({ prefix: "mm:" });
+        return Response.json([...metas.values()].sort((a, b) => b.at - a.at));
+      }
+      if (!vid || vid.length > 40) return new Response("Not found", { status: 404 });
+      // 조각 올리기 (관리자): PUT /api/media/<vid>?i=0
+      if (isApi && method === "PUT" && !mm[3]) {
+        const i = Number(url.searchParams.get("i"));
+        const data = await request.arrayBuffer();
+        if (!(i >= 0 && i < 4000) || data.byteLength === 0 || data.byteLength > MEDIA_CHUNK) return new Response("잘못된 조각", { status: 400 });
+        await storage.put(`m:${vid}:${i}`, data);
+        return Response.json({ ok: true });
+      }
+      // 다 올렸음 (관리자): POST /api/media/<vid>/done
+      if (isApi && method === "POST" && mm[3]) {
+        const b = await request.json();
+        const n = Math.ceil(Number(b.size) / MEDIA_CHUNK);
+        if (!(n > 0) || !MEDIA_TYPES.includes(b.type)) return new Response("잘못된 영상 정보", { status: 400 });
+        const have = await storage.get(Array.from({ length: n }, (_, i) => `m:${vid}:${i}`));
+        if (have.size !== n) return new Response(`조각이 모자랍니다 (${have.size}/${n})`, { status: 409 });
+        const meta = { vid, name: str(b.name, 200), size: Number(b.size), type: b.type, n, at: Date.now() };
+        await storage.put("mm:" + vid, meta);
+        return Response.json({ ok: true, meta });
+      }
+      // 지우기 (관리자)
+      if (isApi && method === "DELETE") {
+        const meta = await storage.get("mm:" + vid);
+        const n = meta?.n || 0;
+        const keys = ["mm:" + vid, ...Array.from({ length: n }, (_, i) => `m:${vid}:${i}`)];
+        for (let i = 0; i < keys.length; i += 128) await storage.delete(keys.slice(i, i + 128));
+        return Response.json({ ok: true });
+      }
+      // 재생 (송출 화면): GET /media/<vid> — 영상 탐색을 위해 Range 지원
+      if (!isApi && (method === "GET" || method === "HEAD")) {
+        const meta = await storage.get("mm:" + vid);
+        if (!meta) return new Response("Not found", { status: 404 });
+        let start = 0, end = meta.size - 1, partial = false;
+        const range = request.headers.get("range");
+        const m = range && range.match(/bytes=(\d*)-(\d*)/);
+        if (m) {
+          partial = true;
+          if (m[1] === "") { start = Math.max(0, meta.size - Number(m[2])); }
+          else { start = Number(m[1]); if (m[2] !== "") end = Math.min(end, Number(m[2])); }
+          if (start > end || start >= meta.size) return new Response(null, { status: 416, headers: { "content-range": `bytes */${meta.size}` } });
+        }
+        const headers = {
+          "content-type": meta.type, "accept-ranges": "bytes", "content-length": String(end - start + 1),
+          "cache-control": "public, max-age=31536000, immutable",
+          ...(partial ? { "content-range": `bytes ${start}-${end}/${meta.size}` } : {}),
+        };
+        if (method === "HEAD") return new Response(null, { status: partial ? 206 : 200, headers });
+        let ci = Math.floor(start / MEDIA_CHUNK);
+        const last = Math.floor(end / MEDIA_CHUNK);
+        const body = new ReadableStream({
+          async pull(ctrl) {
+            if (ci > last) { ctrl.close(); return; }
+            const buf = await storage.get(`m:${vid}:${ci}`);
+            if (!buf) { ctrl.error(new Error("missing chunk")); return; }
+            const base = ci * MEDIA_CHUNK, from = Math.max(0, start - base), to = Math.min(buf.byteLength, end - base + 1);
+            ctrl.enqueue(new Uint8Array(buf, from, to - from));
+            ci++;
+          },
+        });
+        return new Response(body, { status: partial ? 206 : 200, headers });
+      }
     }
 
     // ---------- 썸네일 ----------
@@ -332,6 +407,11 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // 배경 영상 재생 (주소를 아는 송출 화면용)
+    if (url.pathname.startsWith("/media/") && (request.method === "GET" || request.method === "HEAD")) {
+      return env.LIVE.get(env.LIVE.idFromName("main")).fetch(request);
+    }
+
     // 썸네일 보기: 관리자 화면은 ?k=토큰 으로 미공개 곡 이미지도 볼 수 있다
     if (url.pathname.startsWith("/img/") && request.method === "GET") {
       const headers = new Headers(request.headers);
@@ -344,7 +424,7 @@ export default {
       // 상태를 바꾸는 요청과 행사 파일은 관리자 토큰 필요
       // 별점·댓글 작성은 참가자도 가능
       const participantWrite = request.method === "POST" && ["/api/rate", "/api/comment", "/api/like", "/api/react"].includes(url.pathname);
-      const needsToken = url.pathname.startsWith("/api/events") || (request.method !== "GET" && !participantWrite);
+      const needsToken = url.pathname.startsWith("/api/events") || url.pathname.startsWith("/api/media") || (request.method !== "GET" && !participantWrite);
       if (needsToken) {
         const token = request.headers.get("x-admin-token");
         if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) {

@@ -908,14 +908,64 @@ const idb=(()=>{let p;
   return{put:(k,v)=>run('readwrite',st=>st.put(v,k)),get:k=>run('readonly',st=>st.get(k)),del:k=>run('readwrite',st=>st.delete(k)),keys:()=>run('readonly',st=>st.getAllKeys())};
 })();
 const vurl={};let vhave=null;
-async function videoURL(vid){if(vurl[vid])return vurl[vid];const b=await idb.get(vid);if(!b)return null;return vurl[vid]=URL.createObjectURL(b);}
+// 이 컴퓨터에 사본이 있으면 그걸, 없으면 서버에서
+async function videoURL(vid){
+  if(vurl[vid])return vurl[vid];
+  let b=null;try{b=await idb.get(vid);}catch(e){}
+  if(b)return vurl[vid]=URL.createObjectURL(b);
+  const v=state.visuals.find(x=>x.vid===vid);
+  return v?.server?'/media/'+vid:null;
+}
+const uploading={};   // vid → 진행률(0~100)
+const MEDIA_CHUNK=1500000;
+async function uploadToServer(v,blob){
+  if(!token())throw new Error('관리자 토큰이 필요합니다');
+  const n=Math.ceil(blob.size/MEDIA_CHUNK);let done=0,next=0;
+  uploading[v.vid]=0;paintUpload(v.vid);
+  const worker=async()=>{
+    while(next<n){
+      const i=next++;
+      for(let tries=0;;tries++){
+        try{
+          const r=await fetch(`/api/media/${v.vid}?i=${i}`,{method:'PUT',headers:{'x-admin-token':token()},body:blob.slice(i*MEDIA_CHUNK,(i+1)*MEDIA_CHUNK)});
+          if(!r.ok)throw new Error(r.status===401?'관리자 토큰이 틀렸습니다':await r.text());break;
+        }catch(e){if(tries>=3)throw e;await sleep(800*(tries+1));}
+      }
+      done++;uploading[v.vid]=Math.round(done/n*100);paintUpload(v.vid);
+    }
+  };
+  try{
+    await Promise.all([worker(),worker(),worker()]);
+    await api(`/api/media/${v.vid}/done`,'POST',{name:v.name,size:blob.size,type:blob.type||'video/mp4'});
+    v.server=true;save();
+  }finally{delete uploading[v.vid];paintUpload(v.vid);}
+}
+function paintUpload(vid){
+  const el=document.querySelector(`.vcard[data-vpick="${vid}"] .vst`);if(!el)return;
+  el.innerHTML=vid in uploading?`<span style="color:var(--warn)">서버에 올리는 중 ${uploading[vid]}%</span>`:vstatus(state.visuals.find(x=>x.vid===vid));
+  if(!(vid in uploading)&&opts.etab==='bg')setTimeout(()=>{if(!Object.keys(uploading).length)renderTrack();},300);
+}
+function vstatus(v){
+  if(!v)return '';
+  const local=vhave?.has(v.vid);
+  if(v.server)return '<span style="color:var(--ok)">서버 ✓</span>'+(local?' · 이 컴퓨터에도':'');
+  if(local)return `<span style="color:var(--warn)">이 컴퓨터에만</span> <button data-vsrv="${v.vid}" style="padding:1px 6px;font-size:11px">서버에 올리기</button>`;
+  return '<span style="color:var(--bad)">없음 — 다시 올려주세요</span>';
+}
+async function pushLocalToServer(list){
+  for(const v of list){
+    try{const b=await idb.get(v.vid);if(!(b instanceof Blob)){status(`"${v.name}"의 이 컴퓨터 사본을 읽을 수 없습니다. 영상을 다시 올려주세요`);continue;}status(`"${v.name}" 서버에 올리는 중…`);await uploadToServer(v,b);}
+    catch(e){status(`"${v.name}" 올리기 실패: ${e.message}`);return;}
+  }
+  status('서버에 올렸습니다. 이제 어느 컴퓨터에서 송출해도 나옵니다');renderTrack();
+}
 const fmtSize=n=>n>1e9?(n/1e9).toFixed(1)+'GB':n>1e6?Math.round(n/1e6)+'MB':Math.round(n/1e3)+'KB';
 async function renderBgTab(t,etabs){
   try{vhave=new Set(await idb.keys());}catch(e){vhave=new Set();}
   const V=state.visuals,cur=V.find(v=>v.vid===t.bg);
   const used=vid=>state.tracks.filter(x=>x.bg===vid).length;
   $('#trackBody').innerHTML=etabs+`
-  <section class="card"><h3>배경 영상<em>송출 화면 뒤에서 반복 재생됩니다 · 소리는 나오지 않습니다 · 영상은 이 컴퓨터의 브라우저에 저장됩니다</em></h3>
+  <section class="card"><h3>배경 영상<em>송출 화면 뒤에서 재생됩니다 · 소리는 나오지 않습니다 · 서버에 저장됩니다</em></h3>
     <div class="bgnow"><div class="bgprev" id="bgPrev"></div>
       <div><div style="font-size:13px">이 곡의 배경: <b>${cur?esc(cur.name):'없음'}</b></div>
         ${cur?`<div class="row" style="margin:8px 0 2px;flex-wrap:wrap;font-size:13px">
@@ -927,14 +977,15 @@ async function renderBgTab(t,etabs){
         <div class="row"><label class="btn primary" style="margin:0;font-size:13px">영상 올리기<input type="file" accept="video/*" multiple data-vup hidden></label>${cur?'<button data-vnone>배경 영상 빼기</button>':''}</div></div></div>
     <h4>영상 라이브러리 (${V.length}) — 눌러서 이 곡에 지정, 여러 곡에 같은 영상을 써도 됩니다</h4>
     <div class="vlib" id="vlib">${V.map(v=>`<div class="vcard ${v.vid===t.bg?'sel':''}" data-vpick="${v.vid}">
-        ${vhave.has(v.vid)?`<video muted loop playsinline preload="metadata" data-vsrc="${v.vid}"></video>`:'<div class="miss">이 컴퓨터에 없음<br>다시 올려주세요</div>'}
-        <div class="vm"><b title="${esc(v.name)}">${esc(v.name)}</b><small class="mut">${fmtSize(v.size)} · ${used(v.vid)}곡에서 사용</small></div>
+        ${vhave.has(v.vid)||v.server?`<video muted loop playsinline preload="metadata" data-vsrc="${v.vid}"></video>`:'<div class="miss">이 컴퓨터에도 서버에도 없음<br>다시 올려주세요</div>'}
+        <div class="vm"><b title="${esc(v.name)}">${esc(v.name)}</b><small class="mut">${fmtSize(v.size)} · ${used(v.vid)}곡에서 사용</small><small class="vst" style="display:block">${v.vid in uploading?`<span style="color:var(--warn)">서버에 올리는 중 ${uploading[v.vid]}%</span>`:vstatus(v)}</small></div>
         <button class="vdel" data-vdel="${v.vid}" title="라이브러리에서 삭제">✕</button></div>`).join('')||'<p class="mut" style="font-size:13px;grid-column:1/-1">아직 올린 영상이 없습니다.</p>'}</div>
-    <p class="hint">송출은 이 브라우저의 「송출 화면 ↗」 창에서 합니다. 다른 컴퓨터에서 송출하려면 그 컴퓨터에서 영상을 다시 올려야 합니다.</p>
+    ${V.some(v=>!v.server&&vhave.has(v.vid))?`<div class="row" style="margin-top:10px"><button class="primary" data-vsrvall>이 컴퓨터에만 있는 영상 ${V.filter(v=>!v.server&&vhave.has(v.vid)).length}개 서버에 올리기</button></div>`:''}
+    <p class="hint">영상은 서버에 올라가서 어느 컴퓨터의 송출 화면에서도 나옵니다. 올린 컴퓨터에는 사본도 남아 인터넷이 잠깐 끊겨도 재생됩니다.</p>
   </section>`;
   // 미리보기 · 라이브러리 썸네일
   const prev=$('#bgPrev');
-  if(cur&&vhave.has(cur.vid)){const u=await videoURL(cur.vid);prev.innerHTML=t.bgSync?`<img src="${t.img?`/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}`:ytThumb(t.id)}" alt="" style="position:absolute;inset:0"><video id="bgPrevVid" muted playsinline preload="auto" src="${u}" style="position:relative;transition:opacity .6s"></video><span class="tag">미리보기 · 곡과 동기화</span>`
+  if(cur&&(vhave.has(cur.vid)||cur.server)){const u=await videoURL(cur.vid);prev.innerHTML=t.bgSync?`<img src="${t.img?`/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}`:ytThumb(t.id)}" alt="" style="position:absolute;inset:0"><video id="bgPrevVid" muted playsinline preload="auto" src="${u}" style="position:relative;transition:opacity .6s"></video><span class="tag">미리보기 · 곡과 동기화</span>`
     :`<video muted loop playsinline autoplay src="${u}"></video><span class="tag">미리보기</span>`;}
   else prev.innerHTML=`<img src="${t.img?`/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}`:ytThumb(t.id)}" alt=""><span class="tag">앨범 이미지 배경</span>`;
   document.querySelectorAll('#vlib video[data-vsrc]').forEach(async el=>{el.src=await videoURL(el.dataset.vsrc)||'';});
@@ -946,11 +997,15 @@ async function uploadVideos(t,files){
   for(const [i,f] of files.entries()){
     status(`영상 저장 중 ${i+1}/${files.length} — ${f.name}`);
     const vid='v'+Date.now().toString(36)+uid();
-    try{await idb.put(vid,f);}catch(e){status('저장 실패 (디스크 공간이 부족할 수 있습니다): '+(e?.message||e));return;}
-    state.visuals.push({vid,name:f.name,size:f.size});
+    try{await idb.put(vid,f);}catch(e){}   // 이 컴퓨터 사본 (인터넷이 끊겨도 재생되게)
+    const v={vid,name:f.name,size:f.size,type:f.type};
+    state.visuals.push(v);
     if(i===0)t.bg=vid;
+    save();if(i===0)renderTrack();
+    try{status(`서버에 올리는 중 ${i+1}/${files.length} — ${f.name}`);await uploadToServer(v,f);}
+    catch(e){save();renderTrack();status(`서버에 올리지 못했습니다 (${e.message}) — 이 컴퓨터에만 저장됨. 라이브러리의 「서버에 올리기」로 다시 시도하세요`);return;}
   }
-  save();renderTrack();status(`영상 ${files.length}개 저장됨${files.length>1?' · 첫 번째 영상을 이 곡에 지정했습니다':''}`);
+  save();renderTrack();status(`영상 ${files.length}개 서버에 올림${files.length>1?' · 첫 번째 영상을 이 곡에 지정했습니다':''}`);
 }
 
 // 영상을 곡 시간에 맞춘다: 크게 어긋나면 바로 이동, 조금 어긋나면 속도를 살짝 조절해 따라잡기
@@ -1190,7 +1245,7 @@ mainEl.addEventListener('keydown',e=>{
 });
 mainEl.addEventListener('click',e=>{
   const vp=e.target.closest('[data-vpick]');
-  if(vp&&!e.target.closest('[data-vdel]')){const t=trackOf(cur());if(t){t.bg=vp.dataset.vpick;save();renderTrack();status('배경 영상을 지정했습니다');}return;}
+  if(vp&&!e.target.closest('[data-vdel]')&&!e.target.closest('[data-vsrv]')){const t=trackOf(cur());if(t){t.bg=vp.dataset.vpick;save();renderTrack();status('배경 영상을 지정했습니다');}return;}
   const lx=e.target.closest('[data-lx]'),lp=e.target.closest('.lp');
   if(lx||lp){const t=trackOf(cur());if(!t)return;
     if(lx){lyrLines(t)[+lx.dataset.lx].t=null;save();renderLyrics(t);return;}
@@ -1202,9 +1257,11 @@ mainEl.addEventListener('click',e=>{
   if('snapall' in b.dataset){if(!hasGrid(t))return;const on=opts.snap;opts.snap=true;t.cues.forEach(c=>c.t=snapT(t,c.t));opts.snap=on;sortCues(t);refreshCues(t);status(`큐 ${t.cues.length}개를 가장 가까운 박으로 옮겼습니다`);return;}
   if(b.dataset.bpmx){if(!t.bpm)return;t.bpm=Math.round(t.bpm*+b.dataset.bpmx*10)/10;$('[data-bpm]').value=t.bpm;save();renderTimeline(t);renderCues(t);return;}
   if(b.dataset.etab){opts.etab=b.dataset.etab;saveOpts();renderTrack();return;}
+  if(b.dataset.vsrv){const v=state.visuals.find(x=>x.vid===b.dataset.vsrv);if(v)pushLocalToServer([v]);return;}
+  if('vsrvall' in b.dataset){pushLocalToServer(state.visuals.filter(v=>!v.server&&vhave.has(v.vid)));return;}
   if(b.dataset.vdel){const v=state.visuals.find(x=>x.vid===b.dataset.vdel),n=state.tracks.filter(x=>x.bg===v.vid).length;
     if(!confirm(`"${v.name}" 영상을 라이브러리에서 지웁니다.${n?` ${n}곡의 배경에서도 빠집니다.`:''}`))return;
-    idb.del(v.vid).catch(()=>{});state.visuals=state.visuals.filter(x=>x!==v);state.tracks.forEach(x=>{if(x.bg===v.vid)delete x.bg;});save();renderTrack();return;}
+    idb.del(v.vid).catch(()=>{});if(v.server)api('/api/media/'+v.vid,'DELETE').catch(()=>{});state.visuals=state.visuals.filter(x=>x!==v);state.tracks.forEach(x=>{if(x.bg===v.vid)delete x.bg;});save();renderTrack();return;}
   if('bgofsnow' in b.dataset){if(playerId!==t.id)return status('이 곡을 먼저 재생하세요');t.bgOffset=+(ptime()||0).toFixed(2);save();renderTrack();return;}
   if('vnone' in b.dataset){delete t.bg;save();renderTrack();return;}
   if('lapply' in b.dataset){applyLyrics(t,$('#lyrIn').value);save();renderTrack();status(`가사 ${lyrLines(t).filter(l=>l.text).length}구절 반영`);return;}

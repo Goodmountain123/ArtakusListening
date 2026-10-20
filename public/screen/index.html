@@ -207,12 +207,14 @@ async function setBg(t){
   if(key===bgKey)return;bgKey=key;
   if(t&&t.bg){
     try{
-      if(!urls[t.bg]){const blob=await idb.get(t.bg);if(blob)urls[t.bg]=URL.createObjectURL(blob);}
+      if(!urls[t.bg]){let blob=null;try{blob=await idb.get(t.bg);}catch(e){}
+        urls[t.bg]=blob?URL.createObjectURL(blob):'/media/'+encodeURIComponent(t.bg);}   // 이 컴퓨터 사본 → 없으면 서버
       if(key!==bgKey)return;
       if(urls[t.bg]){
         $('#bgimg').style.backgroundImage=t.img?`url("${t.img.replace(/"/g,'%22')}")`:'none';
         const next=$('#v'+(1-front)),cur=$('#v'+front);
         next.loop=!t.bgSync;next.src=urls[t.bg];next.currentTime=0;
+        next.onerror=()=>{if(next.classList.contains('on')){next.classList.remove('on');$('#bgimg').classList.toggle('on',!!t.img);}};   // 서버에도 없으면 원래 배경
         if(!t.bgSync)await next.play().catch(()=>{});
         next.classList.add('on');cur.classList.remove('on');$('#bgimg').classList.remove('on');
         setTimeout(()=>{if(!cur.classList.contains('on')){cur.pause();cur.removeAttribute('src');cur.load();}},1500);
