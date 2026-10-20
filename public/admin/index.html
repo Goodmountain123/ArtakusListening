@@ -3,186 +3,387 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Listening Party · 트랙 에디터</title>
+<title>Listening Party · 관리자</title>
 <style>
 :root{--bg:#0f1014;--panel:#17181e;--line:#262833;--text:#e8e8ec;--mut:#8b8d98;--acc:#ff5a36;--ok:#3ecf8e;--bad:#ff4d6d;--warn:#f5b84a}
 [hidden]{display:none!important}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 system-ui,-apple-system,"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif}
-header{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);height:53px}
-header h1{font-size:14px;letter-spacing:.12em;margin:0}
-header .tag{font-size:11px;color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:2px 8px}
+header{display:flex;align-items:center;gap:8px;padding:0 16px;border-bottom:1px solid var(--line);height:53px}
+header h1{font-size:13px;letter-spacing:.12em;margin:0;white-space:nowrap}
+.mut{color:var(--mut)}
+#saveInfo{font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px}
+#liveInfo{font-size:12px;color:var(--mut);white-space:nowrap}
 .warnbar{background:#3a2a10;color:var(--warn);padding:8px 20px;font-size:13px}
-.layout{display:grid;grid-template-columns:340px 1fr;height:calc(100vh - 53px)}
+.layout{display:grid;grid-template-columns:360px 1fr;height:calc(100vh - 53px)}
 aside{border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
-.load{padding:14px;display:grid;gap:8px;border-bottom:1px solid var(--line)}
-.load .row{display:flex;gap:6px}
 input,select,textarea{background:#0c0d11;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:7px 9px;font:inherit;width:100%}
 input:focus,select:focus,textarea:focus{outline:none;border-color:#4a4d5c}
+input[type=checkbox]{width:auto;accent-color:var(--acc)}
 textarea{min-height:72px;resize:vertical}
-button,.btn{background:#22242d;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:7px 10px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap}
+button,.btn{background:#22242d;border:1px solid var(--line);color:var(--text);border-radius:6px;padding:7px 10px;font:inherit;font-size:13px;cursor:pointer;white-space:nowrap;display:inline-block}
 button:hover,.btn:hover{background:#2b2e39}
 button:disabled{opacity:.4;cursor:default}
 button.primary{background:var(--acc);border-color:var(--acc);color:#fff;font-weight:600}
-#status{color:var(--mut);font-size:12px;min-height:18px}
-#summary{padding:10px 14px;font-size:12px;color:var(--mut);border-bottom:1px solid var(--line)}
-#summary b{color:var(--text)}
-#list{list-style:none;margin:0;padding:0;overflow:auto;flex:1}
-#list a{display:grid;grid-template-columns:24px 1fr auto;gap:8px;padding:8px 14px;color:inherit;text-decoration:none;border-bottom:1px solid #1c1d24;align-items:center}
-#list a:hover{background:#1b1c23}
-#list a.on{background:#23252f}
-.idx{color:var(--mut);font-variant-numeric:tabular-nums;font-size:12px}
-.ttl{overflow:hidden}
-.ttl span.t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ttl small{display:block;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.dur{font-variant-numeric:tabular-nums;color:var(--mut);font-size:12px}
-.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle}
-.io{display:flex;gap:6px;padding:10px 14px;border-top:1px solid var(--line);flex-wrap:wrap}
-main{overflow:auto;padding:20px 24px}
-.wrap{max-width:820px}
+.row{display:flex;gap:6px;align-items:center}
+.tabs{display:flex;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;border:0;border-radius:0;background:transparent;padding:11px;color:var(--mut)}
+.tabs button.on{color:var(--text);box-shadow:inset 0 -2px var(--acc)}
+.pane{display:flex;flex-direction:column;min-height:0;flex:1}
+.load{padding:12px 14px;display:grid;gap:8px;border-bottom:1px solid var(--line)}
+.toolbar{display:flex;gap:6px;padding:8px 14px;border-bottom:1px solid var(--line);align-items:center}
+.toolbar select{flex:1;min-width:0}
+.tog{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--mut);margin:0;white-space:nowrap;cursor:pointer}
+.summary{padding:8px 14px;font-size:12px;color:var(--mut);border-bottom:1px solid var(--line)}
+.summary b{color:var(--text)}
+.scroll{overflow:auto;flex:1;min-height:0}
+#status{padding:8px 14px;border-top:1px solid var(--line);color:var(--mut);font-size:12px;min-height:34px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle;flex:none}
+.t{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+small{display:block;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+.dur,.idx{font-variant-numeric:tabular-nums;color:var(--mut);font-size:12px}
+/* 전체 곡 */
+.lib{list-style:none;margin:0;padding:0}
+.lib li{display:grid;grid-template-columns:18px 1fr auto auto;gap:8px;align-items:center;padding:6px 14px;border-bottom:1px solid #1c1d24}
+.lib li.on{background:#23252f}
+.lib a{color:inherit;text-decoration:none;min-width:0}
+.stag{font-size:10px;color:var(--mut);border:1px solid var(--line);border-radius:4px;padding:0 5px;max-width:84px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 행사 순서 */
+.sess{border-bottom:1px solid var(--line)}
+.sh{display:flex;gap:4px;align-items:center;padding:8px 10px 4px 14px;background:#131419}
+.sh .snum{color:var(--acc);font-weight:700;font-size:12px}
+.sh input{border:0;background:transparent;font-weight:600;padding:3px 4px}
+.sh input:focus{background:#0c0d11}
+.sh .stime{font-size:11px;color:var(--mut);white-space:nowrap}
+.sh button{padding:2px 7px;font-size:11px}
+.sdesc{padding:0 10px 8px 14px;background:#131419}
+.sdesc textarea{min-height:34px;font-size:12px;padding:5px 8px;background:#0f1014}
+.sl{list-style:none;margin:0;padding:0;min-height:34px}
+.sl:empty::after{content:'여기로 끌어오거나, 전체 곡 탭에서 체크해 넣으세요';display:block;padding:9px 14px;color:var(--mut);font-size:12px}
+.sl li{display:grid;grid-template-columns:14px 22px 1fr auto 20px;gap:6px;align-items:center;padding:6px 8px 6px 8px;border-top:1px solid #1c1d24;background:var(--bg)}
+.sl li.on{background:#23252f}
+.sl li.playing .idx{color:var(--acc)}
+.sl a{color:inherit;text-decoration:none;min-width:0}
+.handle{cursor:grab;color:#5a5c68;text-align:center;font-size:12px;user-select:none}
+.out{padding:0;border:0;background:transparent;color:#5a5c68;font-size:12px}
+.out:hover{background:transparent;color:var(--bad)}
+.sortable-ghost{opacity:.35}
+.sortable-chosen{background:#23252f}
+/* 메인 */
+main{overflow:auto;padding:18px 24px 40px}
+.wrap{max-width:860px}
+.th{display:flex;gap:14px;align-items:flex-start;margin-bottom:12px}
+.th .num{font-size:28px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums;line-height:1.2;min-width:40px}
+.th .thx{flex:1;min-width:0}
+.th h2{margin:0;font-size:20px}
+.sub{margin:2px 0 0;color:var(--mut);font-size:12px}
+.sub a{color:var(--mut)}
 #playerBox{position:relative;width:100%;aspect-ratio:16/9;background:#000;border-radius:8px;overflow:hidden}
 #playerBox iframe{position:absolute;inset:0;width:100%;height:100%}
 #cd{position:absolute;inset:0;display:grid;place-items:center;align-content:center;pointer-events:none;background:rgba(0,0,0,.45);color:#fff;text-align:center}
 #cd b{display:block;font-size:110px;line-height:1;font-weight:800}
 #cd b.hit{font-size:56px;color:var(--acc)}
 #cd span{letter-spacing:.3em;font-size:13px;color:var(--acc)}
-.th{display:flex;gap:14px;align-items:flex-start;margin-top:18px}
-.th .num{font-size:28px;font-weight:800;color:var(--acc);font-variant-numeric:tabular-nums;line-height:1.2}
-.th .thx{flex:1;min-width:0}
-.th h2{margin:0;font-size:20px}
-.sub{margin:2px 0 0;color:var(--mut);font-size:12px}
-.sub a{color:var(--mut)}
-.nav{display:flex;gap:6px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:16px}
+.transport{display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.transport #now{font-variant-numeric:tabular-nums;font-size:18px;font-weight:700;margin-left:6px}
+#elsewhere{width:100%;background:#2a2110;color:var(--warn);border-radius:6px;padding:6px 10px;font-size:12px;display:flex;gap:8px;align-items:center}
+#elsewhere button{font-size:12px;padding:3px 8px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;margin-top:14px}
 .card h3{margin:0 0 12px;font-size:12px;letter-spacing:.12em;color:var(--mut);font-weight:600}
-.tc{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:end}
-.tc b{font-size:18px;font-variant-numeric:tabular-nums}
-.tc .row{display:flex;gap:4px}
-.tc input{width:100%;font-variant-numeric:tabular-nums}
+.card h3 em{font-style:normal;letter-spacing:0;font-weight:400;margin-left:8px;color:#6b6d78}
 label{display:block;font-size:11px;color:var(--mut);margin-bottom:4px}
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .grid .full{grid-column:1/-1}
-.mark{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
-#now{font-variant-numeric:tabular-nums;font-size:20px;font-weight:700;min-width:90px}
+.tc{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;align-items:end;margin-top:14px}
+.tc b{font-size:17px;font-variant-numeric:tabular-nums}
+.tc .row{gap:4px}
+.tc input{font-variant-numeric:tabular-nums}
+/* 타임라인 */
+.tl{position:relative;user-select:none;-webkit-user-select:none}
+.ruler{position:relative;height:24px;cursor:pointer;background:#121318;border-radius:6px 6px 0 0}
+.ruler span{position:absolute;top:3px;font-size:10px;color:var(--mut);transform:translateX(-50%);pointer-events:none}
+.ruler span::after{content:'';position:absolute;left:50%;top:15px;height:6px;border-left:1px solid #33353f}
+.ruler span:first-child{transform:none}
+.lane{position:relative;height:72px;background:#0c0d11;border-radius:0 0 6px 6px;cursor:crosshair;overflow:hidden}
+.tlmsg{position:absolute;inset:0;display:grid;place-items:center;color:var(--mut);font-size:12px;pointer-events:none}
+.trim{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg,#1b1c23 0 6px,#121318 6px 12px);pointer-events:none}
+.leadw{position:absolute;top:0;bottom:0;opacity:.14;pointer-events:none}
+.mk{position:absolute;top:8px;bottom:8px;width:4px;margin-left:-2px;border-radius:2px;cursor:grab;touch-action:none}
+.mk span{position:absolute;top:0;left:6px;font-size:10px;font-weight:700;white-space:nowrap;padding:1px 5px;border-radius:3px;color:#111;pointer-events:none}
+.mk.sel{box-shadow:0 0 0 2px #fff}
+.ph{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#fff;pointer-events:none;box-shadow:0 0 6px rgba(255,255,255,.5)}
+.pop{position:absolute;top:104px;z-index:5;width:300px;transform:translateX(-50%);background:#1d1f27;border:1px solid #3a3d4a;border-radius:8px;padding:10px;display:grid;gap:8px;box-shadow:0 10px 30px rgba(0,0,0,.55);user-select:text;-webkit-user-select:text}
+.pop .row input[data-pop=t]{width:90px;font-variant-numeric:tabular-nums}
+.pop .types{display:flex;gap:4px;flex-wrap:wrap}
+.pop .types button{font-size:11px;padding:3px 7px;font-weight:700}
+.pop .types button.on{color:#111}
+.pop .lead{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut)}
+.pop .lead input{width:64px}
 .hint{color:var(--mut);font-size:12px;margin:8px 0 0}
-table.cues{width:100%;border-collapse:collapse;margin-top:10px}
+details.cuelist{margin-top:12px}
+details.cuelist summary{cursor:pointer;color:var(--mut);font-size:12px}
+table.cues{width:100%;border-collapse:collapse;margin-top:8px}
 .cues td,.cues th{padding:5px 4px;border-bottom:1px solid var(--line);text-align:left}
 .cues th{color:var(--mut);font-weight:500;font-size:11px}
 .cues input.sm{width:84px;font-variant-numeric:tabular-nums}
-.cues input.xs{width:64px}
-.cues select{width:120px}
+.cues input.xs{width:60px}
+.cues select{width:118px}
 .cues .act{white-space:nowrap;text-align:right}
-.empty{color:var(--mut);max-width:560px;line-height:1.8}
+.empty{color:var(--mut);max-width:600px;line-height:1.9}
 .empty b{color:var(--text)}
 #scanWrap{position:fixed;right:16px;bottom:16px;width:240px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px;font-size:11px;color:var(--mut);z-index:10}
 #scanWrap iframe{display:block;border-radius:4px}
 #scanLabel{margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media (max-width:820px){.layout{grid-template-columns:1fr;height:auto}aside{max-height:none}#list{max-height:50vh}.tc,.grid{grid-template-columns:1fr 1fr}main{padding:16px}}
+dialog{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:12px;padding:20px;width:min(560px,92vw)}
+dialog::backdrop{background:rgba(0,0,0,.6)}
+dialog h3{margin:0 0 12px;font-size:15px}
+.evrow{display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.evrow .cur{color:var(--acc);font-size:11px;margin-left:6px}
+@media (max-width:900px){.layout{grid-template-columns:1fr;height:auto}.scroll{max-height:55vh}.tc,.grid{grid-template-columns:1fr 1fr}main{padding:16px}header{overflow-x:auto}}
 </style>
 </head>
 <body>
-<header><h1>THE LISTENING PARTY</h1><span class="tag">관리자</span>
+<header>
+  <h1>LISTENING PARTY</h1>
+  <button id="evBtn">행사 ▾</button>
+  <input id="evName" style="width:170px" title="이름을 바꾸면 새 이름으로 따로 저장됩니다(복제)">
+  <span id="saveInfo"></span>
   <span style="flex:1"></span>
-  <span id="liveInfo" style="font-size:12px;color:var(--mut)"></span>
-  <input id="tokenInput" type="password" placeholder="관리자 토큰" style="width:160px">
-  <button id="resetBtn" title="공개된 곡을 모두 지우고 처음 상태로">행사 초기화</button>
+  <span id="liveInfo"></span>
+  <input id="tokenInput" type="password" placeholder="관리자 토큰" style="width:130px">
+  <button id="resetBtn" title="공개된 곡·별점·댓글을 모두 지웁니다 (리허설 후)">공개 초기화</button>
   <a class="btn" href="/" target="_blank" style="text-decoration:none">참가자 화면 ↗</a>
 </header>
-<div class="warnbar" id="warn" hidden>file:// 로 열면 YouTube가 재생을 거부합니다(오류 153). 로컬 서버로 여세요 — 예: 이 파일이 있는 폴더에서 <code>npx serve</code></div>
+<div class="warnbar" id="warn" hidden>file:// 로 열면 YouTube가 재생을 거부합니다(오류 153). 배포된 주소의 /admin/ 으로 여세요.</div>
 <div class="layout">
   <aside>
-    <div class="load">
-      <input id="plInput" placeholder="YouTube 재생목록 URL 또는 ID">
-      <input id="keyInput" type="password" placeholder="YouTube Data API 키 (선택)">
-      <div class="row"><button class="primary" id="loadBtn" style="flex:1">불러오기</button><button id="scanBtn">임베드 검증</button></div>
-      <div id="status"></div>
+    <div class="tabs"><button data-tab="set">행사 순서</button><button data-tab="lib">전체 곡 <span id="libCount" class="mut"></span></button></div>
+
+    <div class="pane" id="paneSet">
+      <div class="summary" id="setSummary"></div>
+      <div class="scroll" id="setList"></div>
     </div>
-    <div id="summary"></div>
-    <ol id="list"></ol>
-    <div class="io">
-      <button id="exportBtn">JSON 내보내기</button>
-      <label class="btn" style="margin:0;font-size:13px;color:var(--text)">JSON 가져오기<input type="file" id="importInput" accept=".json" hidden></label>
-      <button id="csvBtn">타임코드 CSV</button>
+
+    <div class="pane" id="paneLib" hidden>
+      <div class="load">
+        <input id="plInput" placeholder="YouTube 재생목록 URL 또는 ID">
+        <input id="keyInput" type="password" placeholder="YouTube Data API 키 (선택)">
+        <div class="row"><button class="primary" id="loadBtn" style="flex:1">재생목록 불러오기</button><button id="scanBtn">임베드 검증</button></div>
+        <div class="row"><input id="urlInput" placeholder="영상 URL로 한 곡 추가"><button id="addUrlBtn">추가</button></div>
+      </div>
+      <div class="toolbar"><label class="tog"><input type="checkbox" id="selAll"> 전체</label><button id="selUnBtn">미배정만 선택</button><span style="flex:1"></span><span id="selInfo" class="mut" style="font-size:12px"></span></div>
+      <div class="toolbar"><select id="selTarget"></select><button class="primary" id="selAdd">에 넣기</button><button id="selOut">세션에서 빼기</button><button id="selDel">삭제</button></div>
+      <div class="summary" id="libSummary"></div>
+      <ol class="lib scroll" id="libList"></ol>
     </div>
+
+    <div id="status"></div>
   </aside>
   <main>
     <div class="wrap">
+      <div id="trackHead" hidden>
+        <div class="th"><span class="num" id="hNum"></span>
+          <div class="thx"><h2 id="hTitle"></h2><p class="sub" id="hSub"></p></div>
+          <button class="primary" data-pub>참가자에게 공개</button></div>
+      </div>
       <div id="playerBox" hidden><div id="player"></div><div id="cd" hidden></div></div>
+      <div class="transport" id="transport" hidden>
+        <button data-tp="prev" title="이전 곡">⏮</button><button data-tp="play" id="playBtn" style="min-width:42px">▶</button><button data-tp="next" title="다음 곡">⏭</button>
+        <span id="now">0:00.0</span>
+        <span style="flex:1"></span>
+        <label class="tog" title="곡이 끝나면 같은 세션의 다음 곡을 자동으로 재생합니다. 세션 마지막 곡이 끝나면 멈춥니다."><input type="checkbox" id="optAuto"> 세션 안에서 연속 재생</label>
+        <div id="elsewhere" hidden>지금 재생 중: <b id="elseTitle"></b><span style="flex:1"></span><button data-tp="goto">그 곡으로 이동</button><button data-tp="swap">이 곡으로 바꾸기</button></div>
+      </div>
       <div id="trackBody"></div>
     </div>
   </main>
 </div>
 <div id="scanWrap" hidden><div id="scanner"></div><div id="scanLabel">스캔 준비 중…</div></div>
 
+<dialog id="evDlg">
+  <h3>행사</h3>
+  <div id="evList" class="mut">불러오는 중…</div>
+  <div class="row" style="margin-top:14px;flex-wrap:wrap">
+    <button class="primary" id="evNew">+ 새 행사</button>
+    <button id="evExport">파일로 내보내기</button>
+    <label class="btn" style="margin:0;font-size:13px;color:var(--text)">파일 가져오기<input type="file" id="importInput" accept=".json" hidden></label>
+    <button id="csvBtn">타임코드 CSV</button>
+    <span style="flex:1"></span><button id="evClose">닫기</button>
+  </div>
+  <p class="hint">행사는 서버에 자동 저장됩니다. 위쪽 행사 이름을 바꾸면 새 이름으로 따로 저장되고(복제), 원래 행사는 그대로 남습니다.</p>
+</dialog>
+
+<script src="/vendor/Sortable.min.js"></script>
 <script>
 const TYPES=['DROP','SING','SHOUT','MOVE','HIGHLIGHT'];
-const SESSIONS=['','01 세로토닌 & 옥시토신','02 미드나잇 드라이브','03 움직여!','04 론리 시티 서울','05 축제의 시간'];
-const F=[['title','제목'],['artist','아티스트'],['album','앨범'],['year','발매연도'],['session','세션','sel'],['tension','텐션 (1–10)','num'],['reason','선정 이유','area'],['points','감상 포인트','area'],['notes','곡 해설','area'],['related','관련곡 (한 줄에 하나)','area']];
+const TCOL={DROP:'#ff5a36',SING:'#4ea1ff',SHOUT:'#f5b84a',MOVE:'#3ecf8e',HIGHLIGHT:'#c58bff'};
+const DEFAULT_SESSIONS=['세로토닌 & 옥시토신','미드나잇 드라이브','움직여!','론리 시티 서울','축제의 시간'];
+const F=[['title','제목'],['artist','아티스트'],['album','앨범'],['year','발매연도'],['tension','텐션 (1–10)','num'],
+  ['reason','선정 이유 (참가자에게 안 보임)','area'],['points','감상 포인트','area'],['notes','곡 해설','area'],['related','관련곡 (한 줄에 하나)','area']];
 const LS='lp_proto_v1';
 const $=s=>document.querySelector(s);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const status=m=>{$('#status').textContent=m;};
+const uid=()=>Math.random().toString(36).slice(2,8);
+const pad=n=>String(n).padStart(2,'0');
 
-/* ---------- 상태 ---------- */
-let state={playlistId:'',tracks:[]};
-try{const s=localStorage.getItem(LS);if(s)state=JSON.parse(s);}catch(e){}
-function persist(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}}
-let saveT;function save(){clearTimeout(saveT);saveT=setTimeout(persist,250);renderList();}
-
-/* ---------- 시간 유틸 ---------- */
+/* ================= 시간 ================= */
 function fmt(s){if(s==null||isNaN(s))return '--:--';s=Math.max(0,+s);const m=Math.floor(s/60),r=s-m*60;return m+':'+r.toFixed(1).padStart(4,'0');}
-function fmtD(s){if(!s)return '--:--';s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),r=s%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(r).padStart(2,'0');}
+function fmtD(s){if(s==null||isNaN(s))return '--:--';s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),r=s%60;return (h?h+':'+pad(m):m)+':'+pad(r);}
 function parseTC(v){v=String(v).trim();if(!v)return null;const p=v.split(':').map(Number);if(p.some(isNaN))return null;return p.reduce((a,b)=>a*60+b,0);}
 function isoDur(d){const m=d.match(/P(?:(\d+)D)?T?(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/)||[];return (+(m[1]||0))*86400+(+(m[2]||0))*3600+(+(m[3]||0))*60+(+(m[4]||0));}
 function runtime(t){const end=t.end??t.duration;return end?Math.max(0,end-(t.start||0)):null;}
+const sumRt=list=>list.reduce((a,t)=>a+(runtime(t)||0),0);
 function parsePl(v){v=v.trim();try{const u=new URL(v);return u.searchParams.get('list')||'';}catch(e){return v;}}
+function parseVid(v){v=v.trim();const m=v.match(/(?:v=|youtu\.be\/|shorts\/|embed\/|live\/)([\w-]{11})/);return m?m[1]:(/^[\w-]{11}$/.test(v)?v:null);}
 function errMsg(c){return({2:'잘못된 영상 ID',5:'HTML5 재생 오류',100:'삭제/비공개 영상',101:'임베드 차단',150:'임베드 차단',153:'리퍼러 없음 — file://로 열었음'})[c]||('오류 '+c);}
 
-/* ---------- 트랙 병합 ---------- */
-function blank(id){return{id,ytTitle:'',ytChannel:'',duration:null,durSrc:'',embed:'unknown',err:'',title:'',artist:'',album:'',year:'',session:'',tension:'',reason:'',points:'',notes:'',related:'',start:0,end:null,cues:[]};}
+/* ================= 상태 ================= */
+function blank(id){return{id,ytTitle:'',ytChannel:'',duration:null,durSrc:'',embed:'unknown',err:'',title:'',artist:'',album:'',year:'',tension:'',reason:'',points:'',notes:'',related:'',start:0,end:null,cues:[]};}
+function migrate(s){
+  s=s&&typeof s==='object'?s:{};
+  s.tracks=Array.isArray(s.tracks)?s.tracks:[];
+  s.tracks.forEach(t=>{t.cues=Array.isArray(t.cues)?t.cues:[];prefill(t);});
+  if(!Array.isArray(s.sessions)){
+    // 이전 버전(곡마다 session 문자열) → 세션 목록으로
+    s.sessions=DEFAULT_SESSIONS.map((n,i)=>{const full=pad(i+1)+' '+n;return{id:'s'+(i+1),name:n,desc:'',ids:s.tracks.filter(t=>t.session===full).map(t=>t.id)};});
+  }
+  s.tracks.forEach(t=>delete t.session);
+  const known=new Set(s.tracks.map(t=>t.id)),seen=new Set();
+  s.sessions.forEach(x=>{x.id=x.id||'s'+uid();x.name=x.name??'';x.desc=x.desc||'';x.ids=(x.ids||[]).filter(id=>known.has(id)&&!seen.has(id)&&seen.add(id));});
+  s.name=s.name||'첫 행사';s.playlistId=s.playlistId||'';s.serverAt=s.serverAt||0;
+  return s;
+}
+let state=migrate(null);
+try{const s=localStorage.getItem(LS);if(s)state=migrate(JSON.parse(s));}catch(e){}
+let opts={auto:true,tab:'set'};
+try{Object.assign(opts,JSON.parse(localStorage.getItem(LS+'_opts')||'{}'));}catch(e){}
+const saveOpts=()=>{try{localStorage.setItem(LS+'_opts',JSON.stringify(opts));}catch(e){}};
+function persist(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}}
+let persistT;
+function save(render=true){clearTimeout(persistT);persistT=setTimeout(persist,250);scheduleSync();if(render)renderSide();}
+
+const cur=()=>(location.hash.match(/#t=([\w-]+)/)||[])[1]||null;
+const trackOf=id=>state.tracks.find(t=>t.id===id);
+const sessionOf=id=>state.sessions.find(s=>s.ids.includes(id))||null;
+const setlist=()=>state.sessions.flatMap(s=>s.ids.map(trackOf).filter(Boolean));
+const posOf=id=>setlist().findIndex(t=>t.id===id)+1;
+const dotColor=t=>t.embed==='ok'?'var(--ok)':t.embed==='no'?'var(--bad)':'var(--mut)';
+const embedLabel=t=>t.embed==='ok'?'재생 가능':t.embed==='no'?'<span style="color:var(--bad)">'+esc(t.err)+'</span>':'미검증'+(t.err?' · '+esc(t.err):'');
+
 function clean(o){Object.keys(o).forEach(k=>{if(o[k]===undefined||(o[k]===''&&k!=='err'))delete o[k];});return o;}
 function prefill(t){
   if(t.title||t.artist||!t.ytTitle)return;
   const s=t.ytTitle.replace(/\s*[\(\[【][^\)\]】]*[\)\]】]\s*/g,' ').trim();
   const i=s.indexOf(' - ');
-  if(i>0){t.artist=s.slice(0,i).trim();t.title=s.slice(i+3).trim();}
-  else{t.title=s;t.artist=t.ytChannel||'';}
+  if(i>0){t.artist=s.slice(0,i).trim();t.title=s.slice(i+3).trim();}else{t.title=s;t.artist=t.ytChannel||'';}
 }
+// 기존 곡 정보는 유지하고, 새 곡은 뒤에 추가
 function mergeTracks(items){
-  const old=new Map(state.tracks.map(t=>[t.id,t]));
-  state.tracks=items.map(it=>{const t=Object.assign(old.get(it.id)||blank(it.id),clean({...it}));prefill(t);return t;});
+  const map=new Map(state.tracks.map(t=>[t.id,t]));
+  for(const it of items){let t=map.get(it.id);if(!t){t=blank(it.id);state.tracks.push(t);map.set(it.id,t);}Object.assign(t,clean({...it}));prefill(t);}
+}
+function assign(ids,sid){state.sessions.forEach(s=>s.ids=s.ids.filter(x=>!ids.includes(x)));const s=state.sessions.find(x=>x.id===sid);if(s)s.ids.push(...ids);save();updateHeader();}
+function unassign(ids){state.sessions.forEach(s=>s.ids=s.ids.filter(x=>!ids.includes(x)));save();updateHeader();}
+
+/* ================= 사이드바 ================= */
+let sel=new Set(),lastSel=-1,sortables=[];
+function renderSide(){
+  document.querySelectorAll('.tabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===opts.tab));
+  $('#paneSet').hidden=opts.tab!=='set';$('#paneLib').hidden=opts.tab!=='lib';
+  $('#libCount').textContent=state.tracks.length||'';
+  if(opts.tab==='set')renderSet();else renderLib();
+}
+function renderLib(){
+  const c=cur();
+  [...sel].forEach(id=>{if(!trackOf(id))sel.delete(id);});
+  $('#libList').innerHTML=state.tracks.map(t=>{const s=sessionOf(t.id);return `<li class="${t.id===c?'on':''}"><input type="checkbox" data-sel="${t.id}" ${sel.has(t.id)?'checked':''}><a href="#t=${t.id}"><span class="t"><span class="dot" style="background:${dotColor(t)}"></span>${esc(t.title||t.ytTitle||t.id)}</span><small>${esc(t.artist||t.ytChannel||'')}</small></a>${s?`<span class="stag" title="${esc(s.name)}">${esc(s.name)}</span>`:'<span></span>'}<span class="dur">${fmtD(runtime(t))}</span></li>`;}).join('')
+    ||'<li style="display:block;color:var(--mut)">재생목록이나 영상 URL로 곡을 불러오세요.</li>';
+  const prev=$('#selTarget').value;
+  $('#selTarget').innerHTML=state.sessions.map((s,i)=>`<option value="${s.id}">${pad(i+1)} ${esc(s.name)}</option>`).join('');
+  if(state.sessions.some(s=>s.id===prev))$('#selTarget').value=prev;
+  $('#selAll').checked=state.tracks.length>0&&sel.size===state.tracks.length;
+  $('#selInfo').textContent=sel.size?`${sel.size}곡 선택됨`:'Shift+클릭으로 범위 선택';
+  const un=state.tracks.filter(t=>!sessionOf(t.id)).length,bad=state.tracks.filter(t=>t.embed==='no').length,miss=state.tracks.filter(t=>!t.duration).length;
+  $('#libSummary').innerHTML=state.tracks.length?`전체 ${state.tracks.length}곡 · 세션 미배정 <b>${un}</b>${bad?` · <span style="color:var(--bad)">재생 불가 ${bad}</span>`:''}${miss?` · 길이 미확인 ${miss}`:''}`:'';
+}
+function renderSet(){
+  const c=cur();let n=0;
+  sortables.forEach(s=>s.destroy());sortables=[];
+  const all=setlist();
+  $('#setSummary').innerHTML=all.length?`${state.sessions.length}개 세션 · ${all.length}곡 · 총 <b>${fmtD(sumRt(all))}</b>`:'전체 곡 탭에서 곡을 체크해 세션에 넣으세요.';
+  $('#setList').innerHTML=state.sessions.map((s,si)=>{
+    const ts=s.ids.map(trackOf).filter(Boolean);
+    return `<div class="sess"><div class="sh"><span class="snum">${pad(si+1)}</span><input data-sname="${s.id}" value="${esc(s.name)}" placeholder="세션 이름"><span class="stime">${ts.length}곡 · ${fmtD(sumRt(ts))}</span>
+      <button data-smove="${s.id}" data-d="-1" ${si?'':'disabled'} title="위로">↑</button><button data-smove="${s.id}" data-d="1" ${si<state.sessions.length-1?'':'disabled'} title="아래로">↓</button><button data-sdel="${s.id}" title="세션 삭제">✕</button></div>
+      <div class="sdesc"><textarea data-sdesc="${s.id}" rows="1" placeholder="세션 설명 (참가자 앱에 보임)">${esc(s.desc)}</textarea></div>
+      <ol class="sl" data-sid="${s.id}">${ts.map(t=>`<li data-id="${t.id}" class="${t.id===c?'on':''} ${t.id===playerId?'playing':''}"><span class="handle" title="끌어서 순서 변경">⋮⋮</span><span class="idx">${pad(++n)}</span><a href="#t=${t.id}"><span class="t"><span class="dot" style="background:${dotColor(t)}"></span>${esc(t.title||t.ytTitle||t.id)}</span><small>${esc(t.artist||t.ytChannel||'')}${t.cues.length?' · 큐 '+t.cues.length:''}</small></a><span class="dur">${fmtD(runtime(t))}</span><button class="out" data-out="${t.id}" title="세션에서 빼기">✕</button></li>`).join('')}</ol></div>`;
+  }).join('')+`<div style="padding:12px 14px"><button id="addSess">+ 세션 추가</button></div>`;
+  if(window.Sortable)document.querySelectorAll('#setList .sl').forEach(ol=>sortables.push(Sortable.create(ol,{group:'setlist',handle:'.handle',animation:120,emptyInsertThreshold:24,onEnd:()=>setTimeout(syncSetFromDom,0)})));
+  else status('순서 변경 라이브러리를 불러오지 못했습니다');
+}
+function syncSetFromDom(){
+  document.querySelectorAll('#setList .sl').forEach(ol=>{const s=state.sessions.find(x=>x.id===ol.dataset.sid);if(s)s.ids=[...ol.children].map(li=>li.dataset.id).filter(Boolean);});
+  save();updateHeader();
 }
 
-/* ---------- YouTube API ---------- */
+const side=$('aside');
+side.addEventListener('click',e=>{
+  const cb=e.target.closest('input[data-sel]');
+  if(cb){
+    const ids=state.tracks.map(t=>t.id),i=ids.indexOf(cb.dataset.sel);
+    if(e.shiftKey&&lastSel>=0){const [a,b]=[Math.min(i,lastSel),Math.max(i,lastSel)];ids.slice(a,b+1).forEach(id=>cb.checked?sel.add(id):sel.delete(id));}
+    else cb.checked?sel.add(cb.dataset.sel):sel.delete(cb.dataset.sel);
+    lastSel=i;renderLib();return;
+  }
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.tab){opts.tab=b.dataset.tab;saveOpts();renderSide();return;}
+  if(b.id==='addSess'){state.sessions.push({id:'s'+uid(),name:'새 세션',desc:'',ids:[]});save();return;}
+  if(b.dataset.smove){const i=state.sessions.findIndex(s=>s.id===b.dataset.smove),j=i+(+b.dataset.d);[state.sessions[i],state.sessions[j]]=[state.sessions[j],state.sessions[i]];save();updateHeader();return;}
+  if(b.dataset.sdel){const s=state.sessions.find(x=>x.id===b.dataset.sdel);if(s.ids.length&&!confirm(`"${s.name}" 세션을 지웁니다. 안의 ${s.ids.length}곡은 세션 미배정으로 돌아갑니다.`))return;state.sessions=state.sessions.filter(x=>x!==s);save();updateHeader();return;}
+  if(b.dataset.out){unassign([b.dataset.out]);return;}
+  if(b.id==='selUnBtn'){sel=new Set(state.tracks.filter(t=>!sessionOf(t.id)).map(t=>t.id));renderLib();return;}
+  if(b.id==='selAdd'){if(!sel.size)return status('곡을 먼저 체크하세요');if(!state.sessions.length)return status('행사 순서 탭에서 세션을 먼저 만드세요');
+    const ids=state.tracks.filter(t=>sel.has(t.id)).map(t=>t.id),s=state.sessions.find(x=>x.id===$('#selTarget').value);
+    assign(ids,s.id);status(`${ids.length}곡을 "${s.name}"에 넣었습니다`);sel.clear();renderLib();return;}
+  if(b.id==='selOut'){if(!sel.size)return;unassign([...sel]);sel.clear();renderLib();return;}
+  if(b.id==='selDel'){if(!sel.size)return;if(!confirm(`${sel.size}곡을 목록에서 삭제합니다. 입력한 곡 정보도 함께 지워집니다.`))return;
+    const del=new Set(sel);state.tracks=state.tracks.filter(t=>!del.has(t.id));state.sessions.forEach(s=>s.ids=s.ids.filter(x=>!del.has(x)));sel.clear();save();route();return;}
+  if(b.id==='loadBtn'){load();return;}
+  if(b.id==='scanBtn'){state.tracks.length?scanTracks(state.tracks):status('먼저 곡을 불러오세요');return;}
+  if(b.id==='addUrlBtn'){addUrl();return;}
+});
+side.addEventListener('change',e=>{
+  if(e.target.id==='selAll'){e.target.checked?state.tracks.forEach(t=>sel.add(t.id)):sel.clear();renderLib();}
+});
+side.addEventListener('input',e=>{
+  const sn=e.target.dataset.sname,sd=e.target.dataset.sdesc;
+  if(sn){state.sessions.find(s=>s.id===sn).name=e.target.value;save(false);updateHeader();}
+  if(sd){state.sessions.find(s=>s.id===sd).desc=e.target.value;save(false);}
+});
+$('#urlInput').addEventListener('keydown',e=>{if(e.key==='Enter')addUrl();});
+
+/* ================= YouTube 불러오기 ================= */
 let ytReady=false;const ytQ=[];
 window.onYouTubeIframeAPIReady=()=>{ytReady=true;ytQ.splice(0).forEach(f=>f());};
 const whenYT=()=>new Promise(r=>ytReady?r():ytQ.push(r));
 
-/* Data API (키가 있을 때) */
-async function loadViaAPI(pl,key){
+async function playlistIdsAPI(pl,key){
   const ids=[];let tok='';
-  do{
-    const r=await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId=${encodeURIComponent(pl)}&key=${encodeURIComponent(key)}${tok?'&pageToken='+tok:''}`);
-    const j=await r.json();if(j.error)throw new Error(j.error.message);
-    j.items.forEach(i=>ids.push(i.contentDetails.videoId));tok=j.nextPageToken||'';
-  }while(tok);
-  const info={};
-  for(let i=0;i<ids.length;i+=50){
-    const r=await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet,status&id=${ids.slice(i,i+50).join(',')}&key=${encodeURIComponent(key)}`);
-    const j=await r.json();if(j.error)throw new Error(j.error.message);
-    j.items.forEach(v=>info[v.id]=v);
-  }
-  return ids.map(id=>{
-    const v=info[id];if(!v)return{id,embed:'no',err:'삭제/비공개 영상'};
-    const rr=v.contentDetails.regionRestriction;
-    const kr=rr&&((rr.blocked||[]).includes('KR')||(rr.allowed&&!rr.allowed.includes('KR')));
-    return{id,ytTitle:v.snippet.title,ytChannel:v.snippet.channelTitle.replace(/ - Topic$/,''),duration:isoDur(v.contentDetails.duration),durSrc:'api',
-      embed:(!v.status.embeddable||kr)?'no':'unknown',err:!v.status.embeddable?'임베드 차단':kr?'KR 지역 제한':''};
-  });
+  do{const r=await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?part=contentDetails&maxResults=50&playlistId=${encodeURIComponent(pl)}&key=${encodeURIComponent(key)}${tok?'&pageToken='+tok:''}`);
+    const j=await r.json();if(j.error)throw new Error(j.error.message);j.items.forEach(i=>ids.push(i.contentDetails.videoId));tok=j.nextPageToken||'';}while(tok);
+  return ids;
 }
-
-/* 스캐너: 숨은 플레이어로 실제 재생해서 길이·제목·임베드 여부 확인 */
+async function videosAPI(ids,key){
+  const info={};
+  for(let i=0;i<ids.length;i+=50){const r=await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,snippet,status&id=${ids.slice(i,i+50).join(',')}&key=${encodeURIComponent(key)}`);
+    const j=await r.json();if(j.error)throw new Error(j.error.message);j.items.forEach(v=>info[v.id]=v);}
+  return ids.map(id=>{const v=info[id];if(!v)return{id,embed:'no',err:'삭제/비공개 영상'};
+    const rr=v.contentDetails.regionRestriction,kr=rr&&((rr.blocked||[]).includes('KR')||(rr.allowed&&!rr.allowed.includes('KR')));
+    return{id,ytTitle:v.snippet.title,ytChannel:v.snippet.channelTitle.replace(/ - Topic$/,''),duration:isoDur(v.contentDetails.duration),durSrc:'api',
+      embed:(!v.status.embeddable||kr)?'no':'unknown',err:!v.status.embeddable?'임베드 차단':kr?'KR 지역 제한':''};});
+}
 let scanner=null,scanEvt=null,scanning=false,stopFlag=false;
 function getScanner(){
   return whenYT().then(()=>scanner?scanner:new Promise(res=>{
@@ -195,12 +396,7 @@ async function idsFromPlaylist(pl){
   const p=await getScanner();let err=null;
   scanEvt=(k,d)=>{if(k==='error')err=d;};
   p.cuePlaylist({list:pl,listType:'playlist'});
-  for(let i=0;i<50;i++){
-    await sleep(300);
-    const l=p.getPlaylist&&p.getPlaylist();
-    if(l&&l.length){scanEvt=null;return l;}
-    if(err!=null&&i>10){scanEvt=null;throw new Error(errMsg(err));}
-  }
+  for(let i=0;i<50;i++){await sleep(300);const l=p.getPlaylist&&p.getPlaylist();if(l&&l.length){scanEvt=null;return l;}if(err!=null&&i>10){scanEvt=null;throw new Error(errMsg(err));}}
   scanEvt=null;throw new Error('재생목록을 읽지 못함 — 비공개 목록이거나 ID가 틀렸을 수 있음');
 }
 async function scanOne(id){
@@ -208,21 +404,19 @@ async function scanOne(id){
   const w=waitEvt((k,d)=>k==='state'&&d===1?{play:1}:k==='error'?{err:d}:null,15000);
   p.mute();p.loadVideoById(id);
   const r=await w;
-  if(r.play){
-    let d=0;for(let i=0;i<20;i++){d=p.getDuration();if(d)break;await sleep(150);}
+  if(r.play){let d=0;for(let i=0;i<20;i++){d=p.getDuration();if(d)break;await sleep(150);}
     const vd=p.getVideoData?p.getVideoData():{};p.pauseVideo();
-    return{duration:d||undefined,durSrc:'scan',ytTitle:vd.title,ytChannel:(vd.author||'').replace(/ - Topic$/,''),embed:'ok',err:''};
-  }
-  if(r.timeout){try{p.stopVideo();}catch(e){}return{embed:'unknown',err:'응답 없음(광고·버퍼링·자동재생 차단?)'};}
+    return{duration:d||undefined,durSrc:'scan',ytTitle:vd.title,ytChannel:(vd.author||'').replace(/ - Topic$/,''),embed:'ok',err:''};}
+  if(r.timeout){try{p.stopVideo();}catch(e){}return{embed:'unknown',err:'응답 없음(광고·버퍼링?) — 다시 검증해보세요'};}
   return{embed:'no',err:errMsg(r.err)};
 }
-async function scanAll(){
+async function scanTracks(list){
   if(scanning){stopFlag=true;return;}
+  if(!list.length){$('#scanWrap').hidden=true;return;}
   scanning=true;stopFlag=false;$('#scanWrap').hidden=false;$('#scanBtn').textContent='검증 중지';
-  const n=state.tracks.length;
-  for(let i=0;i<n&&!stopFlag;i++){
-    const t=state.tracks[i];
-    $('#scanLabel').textContent=`${i+1}/${n} ${t.title||t.ytTitle||t.id}`;status(`임베드 검증 중 ${i+1}/${n}`);
+  for(let i=0;i<list.length&&!stopFlag;i++){
+    const t=list[i];if(!trackOf(t.id))continue;
+    $('#scanLabel').textContent=`${i+1}/${list.length} ${t.title||t.ytTitle||t.id}`;status(`곡 확인 중 ${i+1}/${list.length}`);
     const r=await scanOne(t.id);
     if(t.durSrc==='api'&&t.duration){delete r.duration;delete r.durSrc;}
     Object.assign(t,clean(r));prefill(t);save();
@@ -230,105 +424,294 @@ async function scanAll(){
   try{scanner.stopVideo();}catch(e){}
   $('#scanWrap').hidden=true;$('#scanBtn').textContent='임베드 검증';scanning=false;
   const bad=state.tracks.filter(t=>t.embed==='no').length,unk=state.tracks.filter(t=>t.embed==='unknown').length;
-  status(`검증 ${stopFlag?'중지':'완료'} — 재생 불가 ${bad}곡, 미확인 ${unk}곡`);
-  renderTrack();
+  status(`확인 ${stopFlag?'중지':'완료'} — 재생 불가 ${bad}곡, 미확인 ${unk}곡`);
+  updateHeader();const t=trackOf(cur());if(t){renderTimeline(t);fillTC(t);}
 }
-
 async function load(){
   const pl=parsePl($('#plInput').value),key=$('#keyInput').value.trim();
   if(!pl)return status('재생목록 URL 또는 ID를 넣으세요');
   try{localStorage.setItem(LS+'_key',key);}catch(e){}
   state.playlistId=pl;$('#loadBtn').disabled=true;
+  const before=new Set(state.tracks.map(t=>t.id));
   try{
     if(key){
       status('Data API로 불러오는 중…');
-      const items=await loadViaAPI(pl,key);mergeTracks(items);save();
-      status(`${items.length}곡 불러옴 · 실제 재생 가능 여부는 '임베드 검증'으로 확인`);
-      $('#loadBtn').disabled=false;
+      const ids=await playlistIdsAPI(pl,key);mergeTracks(await videosAPI(ids,key));save();
+      status(`${ids.length}곡 · 새로 추가 ${ids.filter(i=>!before.has(i)).length}곡 · 실제 재생 여부는 '임베드 검증'으로`);
     }else{
       $('#scanWrap').hidden=false;status('재생목록 읽는 중…');
       const ids=await idsFromPlaylist(pl);mergeTracks(ids.map(id=>({id})));save();
+      status(`${ids.length}곡 · 새로 추가 ${ids.filter(i=>!before.has(i)).length}곡`);
       $('#loadBtn').disabled=false;
-      await scanAll();
+      await scanTracks(state.tracks.filter(t=>!before.has(t.id)||!t.duration));
     }
   }catch(e){status('오류: '+e.message);$('#scanWrap').hidden=true;}
   $('#loadBtn').disabled=false;route();
 }
+async function addUrl(){
+  const id=parseVid($('#urlInput').value);
+  if(!id)return status('영상 URL을 알아볼 수 없습니다');
+  if(trackOf(id))return status('이미 목록에 있는 곡입니다');
+  const key=$('#keyInput').value.trim();
+  $('#urlInput').value='';
+  try{
+    if(key){mergeTracks(await videosAPI([id],key));save();}
+    else{mergeTracks([{id}]);save();await scanTracks([trackOf(id)]);}
+    status('곡을 추가했습니다');
+  }catch(e){status('오류: '+e.message);}
+}
 
-/* ---------- 메인 플레이어 ---------- */
-let player=null,playerId=null;
+/* ================= 메인 플레이어 ================= */
+let player=null,playerId=null,autoplayId=null,lastPub=null,advT=0;
 const live=()=>player&&player!=='pending';
 const ptime=()=>live()&&player.getCurrentTime?player.getCurrentTime():null;
+const pstate=()=>live()&&player.getPlayerState?player.getPlayerState():-1;
 async function showPlayer(id){
   await whenYT();
   if(!player){
-    player='pending';
-    await new Promise(res=>{const p=new YT.Player('player',{width:'100%',height:'100%',videoId:id,playerVars:{playsinline:1,rel:0},
-      events:{onReady:()=>{player=p;playerId=id;const c=cur();if(c&&c!==id){p.cueVideoById(c);playerId=c;}res();},onError:e=>status('플레이어: '+errMsg(e.data))}});});
+    player='pending';const t0=trackOf(id);
+    await new Promise(res=>{const p=new YT.Player('player',{width:'100%',height:'100%',videoId:id,playerVars:{playsinline:1,rel:0,start:Math.floor(t0?.start||0)},
+      events:{onReady:()=>{player=p;playerId=id;res();},onStateChange:onPState,onError:e=>status('플레이어: '+errMsg(e.data))}});});
+    if(autoplayId===id){autoplayId=null;player.playVideo();}
+    id=cur();if(!id||id===playerId)return;
+  }
+  if(!live())return;
+  const t=trackOf(id);if(!t)return;
+  if(autoplayId===id){autoplayId=null;playerId=id;player.loadVideoById({videoId:id,startSeconds:t.start||0});renderSide();return;}
+  if(playerId===id)return;
+  // 다른 곡이 재생 중이면 끊지 않는다
+  if(pstate()===1||pstate()===3)return;
+  playerId=id;player.cueVideoById({videoId:id,startSeconds:t.start||0});
+}
+function onPState(e){
+  const t=trackOf(playerId);
+  if(e.data===0&&opts.auto)advance(1,false);
+  if(e.data===1&&t&&lastPub!==t.id){lastPub=t.id;publish(t,true);}
+  if(e.data===1||e.data===0)renderSide();
+}
+// 이웃 곡: 자동 진행은 같은 세션 안에서만, 버튼은 세션을 넘어서
+function neighbor(id,dir,sameSession){
+  const s=sessionOf(id);
+  if(s&&sameSession){const i=s.ids.indexOf(id);return trackOf(s.ids[i+dir])||null;}
+  const list=s?setlist():state.tracks;const i=list.findIndex(t=>t.id===id);
+  return i<0?null:list[i+dir]||null;
+}
+function advance(dir,manual){
+  if(!manual&&Date.now()-advT<1500)return;
+  advT=Date.now();
+  const from=playerId||cur(),n=neighbor(from,dir,!manual);
+  if(!n){
+    if(!manual){const s=sessionOf(from);status(s?`"${s.name}" 세션이 끝났습니다. 다음 세션은 ⏭로 시작하세요.`:'다음 곡이 없습니다');try{player.pauseVideo();}catch(e){}}
+    else status(dir>0?'마지막 곡입니다':'첫 곡입니다');
     return;
   }
-  if(live()&&playerId!==id){player.cueVideoById(id);playerId=id;}
+  autoplayId=n.id;
+  if(cur()===n.id)showPlayer(n.id);else location.hash='t='+n.id;
 }
 
-/* ---------- 렌더 ---------- */
-const cur=()=>(location.hash.match(/#t=([\w-]+)/)||[])[1]||null;
-const trackOf=id=>state.tracks.find(t=>t.id===id);
-const dotColor=t=>t.embed==='ok'?'var(--ok)':t.embed==='no'?'var(--bad)':'var(--mut)';
-const embedLabel=t=>t.embed==='ok'?'임베드 재생 가능':t.embed==='no'?esc(t.err):'미검증'+(t.err?' · '+esc(t.err):'');
-
-function renderList(){
-  const c=cur();
-  $('#list').innerHTML=state.tracks.map((t,i)=>`<li><a href="#t=${t.id}" class="${t.id===c?'on':''}"><span class="idx">${String(i+1).padStart(2,'0')}</span><span class="ttl"><span class="t"><span class="dot" style="background:${dotColor(t)}"></span>${esc(t.title||t.ytTitle||t.id)}</span><small>${esc(t.artist||t.ytChannel||'')}${t.session?' · S'+esc(t.session.slice(0,2)):''}${t.cues.length?' · 큐 '+t.cues.length:''}</small></span><span class="dur">${fmtD(runtime(t))}</span></a></li>`).join('');
-  if(!state.tracks.length){$('#summary').textContent='재생목록을 불러오세요.';return;}
-  const total=state.tracks.reduce((a,t)=>a+(runtime(t)||0),0);
-  const bad=state.tracks.filter(t=>t.embed==='no').length,miss=state.tracks.filter(t=>!t.duration).length;
-  const per=SESSIONS.slice(1).map(s=>{const ts=state.tracks.filter(t=>t.session===s);return ts.length?`S${s.slice(0,2)} ${ts.length}곡 ${fmtD(ts.reduce((a,t)=>a+(runtime(t)||0),0))}`:'';}).filter(Boolean);
-  $('#summary').innerHTML=`${state.tracks.length}곡 · 총 <b>${fmtD(total)}</b>${miss?` · 길이 미확인 ${miss}`:''}${bad?` · <span style="color:var(--bad)">재생 불가 ${bad}</span>`:''}${per.length?'<br>'+per.join(' · '):''}`;
+/* ================= 참가자 앱 연동 ================= */
+const token=()=>$('#tokenInput').value.trim();
+async function api(path,method='GET',data,extraHeaders){
+  if(location.protocol==='file:')throw new Error('배포된 주소에서만 동작합니다');
+  const r=await fetch(path,{method,headers:{'content-type':'application/json','x-admin-token':token(),...extraHeaders},body:data===undefined?undefined:JSON.stringify(data)});
+  if(!r.ok){const err=new Error(r.status===401?'관리자 토큰이 틀렸습니다':await r.text());err.status=r.status;throw err;}
+  return r.json();
 }
+const programData=()=>({sessions:state.sessions.map(s=>({id:s.id,name:s.name,desc:s.desc||'',count:s.ids.length}))});
+let lastProgram='';
+async function postProgram(force){
+  const p=JSON.stringify(programData());
+  if(!force&&p===lastProgram)return;
+  await api('/api/program','POST',programData());lastProgram=p;
+}
+async function publish(t,auto){
+  if(!token()){if(auto)status('관리자 토큰이 없어 참가자 앱에 공개되지 않았습니다');else status('관리자 토큰을 입력하세요');return;}
+  try{
+    await postProgram();
+    const s=sessionOf(t.id);
+    const r=await api('/api/now','POST',{...t,title:t.title||t.ytTitle||'(제목 없음)',artist:t.artist||t.ytChannel||'',sid:s?.id||'',index:posOf(t.id)});
+    status(`${auto?'재생 시작 → ':''}"${t.title||t.ytTitle}" 공개됨 · 접속 ${r.listeners}명`);refreshLive();
+  }catch(e){status('공개 실패: '+e.message);if(auto)lastPub=null;}
+}
+async function refreshLive(){
+  if(location.protocol==='file:')return;
+  try{const s=await (await fetch('/api/state')).json();$('#liveInfo').textContent=`공개 ${s.unlocked.length}곡 · 접속 ${s.listeners}명`;}catch(e){}
+}
+$('#resetBtn').onclick=async()=>{
+  if(!confirm('참가자 앱에 공개된 곡을 모두 다시 잠그고, 별점·댓글도 지웁니다. 리허설 후에 쓰세요. 계속할까요?'))return;
+  try{await api('/api/reset','POST');lastPub=null;status('공개 초기화 완료');refreshLive();}catch(e){status('초기화 실패: '+e.message);}
+};
 
+/* ================= 서버 저장 (행사) ================= */
+let syncT=null,conflict=false;
+function setSave(m,warn){const el=$('#saveInfo');el.textContent=m;el.style.color=warn?'var(--warn)':'var(--mut)';el.title=m;}
+function scheduleSync(){clearTimeout(syncT);syncT=setTimeout(syncNow,1500);}
+async function syncNow(force){
+  clearTimeout(syncT);
+  if(location.protocol==='file:'||!token()){setSave('이 브라우저에만 저장됨 (토큰 입력 시 서버 저장)');return false;}
+  if(conflict&&!force){setSave('⚠ 서버에 다른 버전이 있어 저장을 멈췄습니다 — 행사 ▾',true);return false;}
+  try{
+    const j=await api('/api/events/'+encodeURIComponent(state.name),'PUT',state,{'x-base':force?'force':String(state.serverAt||0)});
+    state.serverAt=j.updatedAt;conflict=false;persist();
+    setSave('서버 저장됨 '+new Date(j.updatedAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));
+    postProgram().catch(()=>{});
+    return true;
+  }catch(e){
+    if(e.status===409){conflict=true;setSave('⚠ 서버에 다른 버전이 있어 저장을 멈췄습니다 — 행사 ▾',true);}
+    else setSave('서버 저장 실패: '+e.message,true);
+    return false;
+  }
+}
+async function checkServer(){
+  if(location.protocol==='file:'||!token())return syncNow();
+  try{
+    const list=await api('/api/events');
+    const m=list.find(x=>x.name===state.name);
+    if(!m)return syncNow();
+    if(m.updatedAt===state.serverAt){conflict=false;setSave('서버와 동기화됨');postProgram().catch(()=>{});}
+    else{conflict=true;setSave('⚠ 서버에 다른 버전이 있어 저장을 멈췄습니다 — 행사 ▾',true);}
+  }catch(e){setSave(e.status===401?'관리자 토큰이 틀렸습니다':'서버 확인 실패',true);}
+}
+async function openEvent(name){
+  try{
+    const r=await api('/api/events/'+encodeURIComponent(name));
+    state=migrate(r.event);state.name=name;state.serverAt=r.updatedAt;conflict=false;persist();
+    sel.clear();editCue=null;$('#evName').value=state.name;lastProgram='';
+    if(location.hash)location.hash='';else route();
+    setSave('서버에서 불러옴');postProgram().catch(()=>{});$('#evDlg').close();
+  }catch(e){alert('불러오기 실패: '+e.message);}
+}
+async function renderEvents(){
+  const box=$('#evList');
+  if(!token()||location.protocol==='file:'){box.innerHTML='관리자 토큰을 입력하면 서버에 저장된 행사 목록이 보입니다.';return;}
+  box.textContent='불러오는 중…';
+  try{
+    const list=await api('/api/events');
+    box.innerHTML=(list.length?list:[]).map(m=>`<div class="evrow"><div><b>${esc(m.name)}</b>${m.name===state.name?'<span class="cur">● 지금 행사</span>':''}<small>${m.count}곡 · ${new Date(m.updatedAt).toLocaleString('ko-KR')}</small></div>
+      ${m.name===state.name&&conflict?`<button data-evforce>내 화면 버전으로 덮어쓰기</button>`:'<span></span>'}
+      <button data-evopen="${esc(m.name)}">${m.name===state.name&&conflict?'서버 버전 열기':'열기'}</button><button data-evdel="${esc(m.name)}">삭제</button></div>`).join('')||'아직 서버에 저장된 행사가 없습니다.';
+  }catch(e){box.textContent='목록 실패: '+e.message;}
+}
+$('#evBtn').onclick=()=>{$('#evDlg').showModal();renderEvents();};
+$('#evClose').onclick=()=>$('#evDlg').close();
+$('#evList').addEventListener('click',async e=>{
+  const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.evopen!==undefined){const n=b.dataset.evopen;if(n!==state.name||conflict||confirm('서버에 저장된 버전으로 다시 불러올까요?'))openEvent(n);}
+  if(b.dataset.evdel!==undefined){const n=b.dataset.evdel;if(!confirm(`"${n}" 행사를 서버에서 삭제합니다. 되돌릴 수 없습니다.`))return;
+    try{await api('/api/events/'+encodeURIComponent(n),'DELETE');if(n===state.name){state.serverAt=0;conflict=false;persist();setSave('서버에서 삭제됨 (이 화면에는 남아 있음)',true);}renderEvents();}catch(err){alert(err.message);}}
+  if('evforce' in b.dataset){if(!confirm('서버에 있는 버전을 지금 이 화면의 내용으로 덮어씁니다.'))return;await syncNow(true);renderEvents();}
+});
+$('#evNew').onclick=async()=>{
+  const name=(prompt('새 행사 이름','')||'').trim();if(!name)return;
+  if(token()&&location.protocol!=='file:'){try{const list=await api('/api/events');if(list.some(m=>m.name===name))return alert('같은 이름의 행사가 이미 있습니다.');}catch(e){}}
+  await syncNow();
+  state=migrate({name,sessions:state.sessions.map(s=>({id:s.id,name:s.name,desc:s.desc,ids:[]}))});
+  conflict=false;persist();sel.clear();$('#evName').value=name;lastProgram='';
+  if(location.hash)location.hash='';else route();
+  syncNow();$('#evDlg').close();status(`새 행사 "${name}" — 세션 이름만 가져왔습니다. 전체 곡 탭에서 재생목록을 불러오세요.`);
+};
+$('#evName').addEventListener('change',e=>{
+  const v=e.target.value.trim();
+  if(!v||v===state.name){e.target.value=state.name;return;}
+  state.name=v;state.serverAt=0;conflict=false;persist();syncNow();
+  status(`"${v}" 이름으로 따로 저장합니다`);
+});
+function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
+$('#evExport').onclick=()=>download(state.name.replace(/[\\/:*?"<>|]/g,'_')+'.json',JSON.stringify(state,null,2),'application/json');
+$('#importInput').onchange=async e=>{
+  const f=e.target.files[0];if(!f)return;
+  try{const s=JSON.parse(await f.text());if(!Array.isArray(s.tracks))throw 0;
+    state=migrate(s);if(!s.name)state.name=f.name.replace(/\.json$/i,'');state.serverAt=0;conflict=false;persist();$('#evName').value=state.name;lastProgram='';
+    if(location.hash)location.hash='';else route();syncNow();$('#evDlg').close();status('가져오기 완료');}
+  catch(err){alert('행사 JSON 형식이 아닙니다');}
+  e.target.value='';
+};
+$('#csvBtn').onclick=()=>{
+  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const rows=[['순서','세션','아티스트','제목','영상길이','음악시작','음악끝','러닝타임','큐시점','리드','종류','메시지','YouTube'].map(q).join(',')];
+  const ordered=[...setlist(),...state.tracks.filter(t=>!sessionOf(t.id))];
+  ordered.forEach(t=>{const p=posOf(t.id),s=sessionOf(t.id);
+    const base=[p||'',s?.name||'(미배정)',t.artist,t.title||t.ytTitle,fmtD(t.duration),fmt(t.start||0),t.end!=null?fmt(t.end):'',fmtD(runtime(t))];
+    (t.cues.length?t.cues:[null]).forEach(c=>rows.push([...base,...(c?[fmt(c.t),c.lead,c.type,c.msg]:['','','','']),'https://youtu.be/'+t.id].map(q).join(',')));});
+  download(state.name+' 타임코드.csv','﻿'+rows.join('\n'),'text/csv');
+};
+
+/* ================= 곡 화면 ================= */
 function field([k,l,ty],t){
-  let inp;
-  if(ty==='sel')inp=`<select data-k="${k}">${SESSIONS.map(s=>`<option value="${esc(s)}" ${s===t[k]?'selected':''}>${s||'미배정'}</option>`).join('')}</select>`;
-  else if(ty==='area')inp=`<textarea data-k="${k}">${esc(t[k])}</textarea>`;
-  else inp=`<input data-k="${k}" ${ty==='num'?'type="number" min="1" max="10"':''} value="${esc(t[k])}">`;
+  const inp=ty==='area'?`<textarea data-k="${k}">${esc(t[k])}</textarea>`:`<input data-k="${k}" ${ty==='num'?'type="number" min="1" max="10"':''} value="${esc(t[k])}">`;
   return `<div class="${ty==='area'?'full':''}"><label>${l}</label>${inp}</div>`;
 }
-
+function updateHeader(){
+  const t=trackOf(cur());if(!t)return;
+  const p=posOf(t.id),s=sessionOf(t.id);
+  $('#hNum').textContent=p?pad(p):'—';
+  $('#hTitle').textContent=t.title||t.ytTitle||t.id;
+  $('#hSub').innerHTML=`${s?esc(s.name):'<span style="color:var(--warn)">세션 미배정</span>'} · <span class="dot" style="background:${dotColor(t)}"></span>${embedLabel(t)} · <a href="https://youtu.be/${t.id}" target="_blank" rel="noopener">YouTube에서 보기</a>`;
+}
 function renderTrack(){
   const id=cur(),t=id&&trackOf(id);
-  $('#playerBox').hidden=!t;
+  for(const s of ['#playerBox','#transport','#trackHead'])$(s).hidden=!t;
+  editCue=null;
   if(!t){
-    $('#trackBody').innerHTML=`<div class="empty"><p><b>1.</b> 왼쪽에 YouTube 재생목록 URL을 넣고 불러오기.<br>
-      <b>2.</b> 키가 없으면 숨은 플레이어가 곡마다 실제로 재생해보며 길이·제목·임베드 가능 여부를 수집합니다(곡당 1~3초).<br>
-      Data API 키를 넣으면 길이·제목을 즉시 가져오고, 임베드 실검증은 따로 돌립니다.<br>
-      <b>3.</b> 트랙을 눌러 곡 정보를 쓰고, 재생하면서 음악 시작·끝과 큐포인트를 찍습니다.<br>
-      모든 내용은 이 브라우저에 자동 저장됩니다. 백업은 JSON 내보내기로.</p></div>`;
+    $('#trackBody').innerHTML=`<div class="empty">
+      <p><b>1. 곡 불러오기</b> — 왼쪽 「전체 곡」 탭에서 YouTube 재생목록을 불러옵니다. 영상 URL로 한 곡씩 추가할 수도 있습니다.</p>
+      <p><b>2. 세션에 넣기</b> — 곡을 체크하고 세션을 골라 「에 넣기」. Shift+클릭으로 여러 곡을 한 번에 고를 수 있습니다.</p>
+      <p><b>3. 순서 정하기</b> — 「행사 순서」 탭에서 ⋮⋮를 끌어 순서를 바꿉니다. 세션끼리도 옮겨집니다. 세션 설명은 참가자 앱에 보입니다.</p>
+      <p><b>4. 곡 다듬기</b> — 곡을 누르면 곡 정보와 타임라인이 나옵니다. 타임라인을 클릭해 큐포인트를 찍습니다.</p>
+      <p><b>5. 행사 진행</b> — 재생을 시작한 곡은 참가자 앱에 자동으로 공개됩니다. 「세션 안에서 연속 재생」을 켜면 세션 끝까지 이어서 재생하고 멈춥니다.</p>
+      <p class="mut">모든 내용은 서버에 행사별로 자동 저장됩니다(관리자 토큰 필요). 다음 행사는 「행사 ▾ → 새 행사」.</p></div>`;
     return;
   }
-  showPlayer(id);
-  const i=state.tracks.indexOf(t);
+  showPlayer(id);updateHeader();
   $('#trackBody').innerHTML=`
-  <div class="th"><span class="num">${String(i+1).padStart(2,'0')}</span>
-    <div class="thx"><h2 id="hTitle">${esc(t.title||t.ytTitle||t.id)}</h2>
-      <p class="sub"><span class="dot" style="background:${dotColor(t)}"></span>${embedLabel(t)} · <a href="https://youtu.be/${t.id}" target="_blank" rel="noopener">${esc(t.ytTitle||t.id)}</a></p></div>
-    <div class="nav"><button class="primary" data-pub>참가자에게 공개</button><button data-go="-1" ${i?'':'disabled'}>←</button><button data-go="1" ${i<state.tracks.length-1?'':'disabled'}>→</button></div></div>
-  <section class="card"><h3>타임코드</h3>
-    <div class="tc">
-      <div><label>영상 길이</label><b>${fmtD(t.duration)}</b></div>
-      <div><label>음악 시작</label><div class="row"><input data-tc="start" value="${fmt(t.start||0)}"><button data-set="start" title="현재 재생 위치로">⌖</button></div></div>
-      <div><label>음악 끝</label><div class="row"><input data-tc="end" value="${t.end!=null?fmt(t.end):''}" placeholder="${fmtD(t.duration)}"><button data-set="end" title="현재 재생 위치로">⌖</button></div></div>
-      <div><label>실제 러닝타임</label><b id="rt">${fmtD(runtime(t))}</b></div>
+  <section class="card"><h3>타임라인<em>아래 띠 클릭 = 큐포인트 추가 · 마커 끌기 = 위치 조정 · 위 눈금 클릭 = 그 위치로 이동 · M 키 = 지금 위치에 추가</em></h3>
+    <div class="tl" id="tl"><div class="ruler" id="ruler"></div><div class="lane" id="lane"></div><div class="ph" id="ph" hidden></div>
+      <div class="pop" id="pop" hidden>
+        <div class="row"><input data-pop="t"><button data-pp="seek" title="카운트다운 2초 전부터 재생">▶ 들어보기</button><span style="flex:1"></span><button data-pp="del">삭제</button></div>
+        <div class="types">${TYPES.map(y=>`<button data-ptype="${y}" style="border-color:${TCOL[y]}">${y}</button>`).join('')}</div>
+        <input data-pop="msg" placeholder="화면에 띄울 문구 (예: 다 같이!)">
+        <div class="row"><span class="lead">카운트다운 <input data-pop="lead" type="number" min="0" step="0.5"> 초 전부터</span><span style="flex:1"></span><button class="primary" data-pp="ok">확인</button></div>
+      </div>
     </div>
-    <div class="mark"><span id="now">0:00.0</span>${TYPES.map(y=>`<button data-cue="${y}">+ ${y}</button>`).join('')}</div>
-    <p class="hint">재생 중 버튼을 누르면 그 시점이 큐포인트로 찍힙니다. 단축키 M = HIGHLIGHT, Space = 재생/정지. ▶는 카운트다운 2초 전부터 재생.</p>
-    <table class="cues"><thead><tr><th>시점</th><th>리드(초)</th><th>종류</th><th>메시지</th><th></th></tr></thead><tbody id="cueRows"></tbody></table>
+    <div class="tc" id="tcBox"></div>
+    <details class="cuelist"><summary>큐포인트 목록 (<span id="cueCount">0</span>)</summary>
+      <table class="cues"><thead><tr><th>시점</th><th>리드(초)</th><th>종류</th><th>메시지</th><th></th></tr></thead><tbody id="cueRows"></tbody></table></details>
   </section>
   <section class="card"><h3>곡 정보</h3><div class="grid">${F.map(f=>field(f,t)).join('')}</div></section>`;
-  renderCues(t);
+  fillTC(t);renderTimeline(t);renderCues(t);
+}
+function fillTC(t){
+  const box=$('#tcBox');if(!box)return;
+  box.innerHTML=`<div><label>영상 길이</label><b>${fmtD(t.duration)}</b></div>
+    <div><label>음악 시작</label><div class="row"><input data-tc="start" value="${fmt(t.start||0)}"><button data-set="start" title="현재 재생 위치로">⌖</button></div></div>
+    <div><label>음악 끝</label><div class="row"><input data-tc="end" value="${t.end!=null?fmt(t.end):''}" placeholder="${fmtD(t.duration)}"><button data-set="end" title="현재 재생 위치로">⌖</button></div></div>
+    <div><label>실제 러닝타임</label><b id="rt">${fmtD(runtime(t))}</b></div>`;
 }
 
+/* ---------- 타임라인 ---------- */
+let editCue=null,drag=null,lastType='HIGHLIGHT';
+const sortCues=t=>t.cues.sort((a,b)=>a.t-b.t);
+function tlDur(t){return t.duration||(live()&&playerId===t.id?player.getDuration():0)||0;}
+function renderTimeline(t){
+  const lane=$('#lane'),ruler=$('#ruler');if(!lane)return;
+  const D=tlDur(t);
+  if(!D){ruler.innerHTML='';lane.innerHTML='<div class="tlmsg">곡 길이를 아직 모릅니다 — 한 번 재생하면 타임라인이 생깁니다</div>';return;}
+  const pct=s=>Math.min(100,Math.max(0,s/D*100))+'%';
+  const step=D<=180?15:D<=420?30:60;
+  let r='';for(let s=0;s<D-step/3;s+=step)r+=`<span style="left:${pct(s)}">${fmtD(s)}</span>`;
+  ruler.innerHTML=r;
+  const st=t.start||0,en=t.end??D;
+  let h='';
+  if(st>0)h+=`<div class="trim" style="left:0;width:${pct(st)}"></div>`;
+  if(en<D)h+=`<div class="trim" style="left:${pct(en)};right:0"></div>`;
+  t.cues.forEach((c,j)=>{const col=TCOL[c.type]||'#fff';
+    h+=`<div class="leadw" style="left:${pct(c.t-c.lead)};width:${Math.min(c.lead,c.t)/D*100}%;background:${col}"></div>`;
+    h+=`<div class="mk${c===editCue?' sel':''}" data-mk="${j}" style="left:${pct(c.t)};background:${col}"><span style="background:${col}">${esc(c.msg||c.type)}</span></div>`;});
+  lane.innerHTML=h;
+}
 function renderCues(t){
   const tb=$('#cueRows');if(!tb)return;
+  $('#cueCount').textContent=t.cues.length;
   tb.innerHTML=t.cues.length?t.cues.map((c,j)=>`<tr data-j="${j}">
     <td><input class="sm" data-c="t" value="${fmt(c.t)}"></td>
     <td><input class="xs" type="number" min="0" step="0.5" data-c="lead" value="${c.lead}"></td>
@@ -337,112 +720,146 @@ function renderCues(t){
     <td class="act"><button data-cplay>▶</button> <button data-cdel>✕</button></td></tr>`).join('')
     :`<tr><td colspan="5" class="hint">아직 큐포인트 없음</td></tr>`;
 }
-const sortCues=t=>t.cues.sort((a,b)=>a.t-b.t);
-function addCue(t,type){
-  const now=ptime();if(now==null)return status('플레이어가 준비되지 않음');
-  t.cues.push({t:+now.toFixed(2),lead:5,type,msg:''});sortCues(t);renderCues(t);save();
+function refreshCues(t){renderTimeline(t);renderCues(t);save();}
+function openPop(t,c){
+  editCue=c;const pop=$('#pop'),D=tlDur(t);if(!pop||!D)return;
+  pop.hidden=false;
+  pop.querySelector('[data-pop=t]').value=fmt(c.t);
+  pop.querySelector('[data-pop=msg]').value=c.msg;
+  pop.querySelector('[data-pop=lead]').value=c.lead;
+  paintTypes(c);
+  const w=$('#tl').clientWidth;pop.style.left=Math.min(w-150,Math.max(150,c.t/D*w))+'px';
+  renderTimeline(t);setTimeout(()=>pop.querySelector('[data-pop=msg]').focus(),0);
+}
+function paintTypes(c){document.querySelectorAll('#pop [data-ptype]').forEach(b=>{const on=b.dataset.ptype===c.type;b.classList.toggle('on',on);b.style.background=on?TCOL[b.dataset.ptype]:'';});}
+function closePop(){if(!editCue)return;editCue=null;const p=$('#pop');if(p)p.hidden=true;const t=trackOf(cur());if(t)renderTimeline(t);}
+function addCueAt(t,time,open){
+  const c={t:+time.toFixed(2),lead:5,type:lastType,msg:''};
+  t.cues.push(c);sortCues(t);refreshCues(t);if(open)openPop(t,c);return c;
 }
 
-/* ---------- 이벤트 ---------- */
-const body=$('#trackBody');
-body.addEventListener('input',e=>{
+const mainEl=$('main');
+mainEl.addEventListener('pointerdown',e=>{
   const t=trackOf(cur());if(!t)return;
-  const k=e.target.dataset.k;
-  if(k){t[k]=e.target.value;if(k==='title')$('#hTitle').textContent=t.title||t.ytTitle||t.id;save();}
-  const ck=e.target.dataset.c;
-  if(ck==='msg'||ck==='lead'){const c=t.cues[+e.target.closest('tr').dataset.j];c[ck]=ck==='lead'?(+e.target.value||0):e.target.value;save();}
+  if(e.target.closest('#pop'))return;
+  const mk=e.target.closest('.mk'),lane=e.target.closest('#lane'),ruler=e.target.closest('#ruler');
+  if(editCue&&!mk)closePop();
+  if(!mk&&!lane&&!ruler)return;
+  const D=tlDur(t);if(!D)return;
+  const rect=$('#lane').getBoundingClientRect(),timeAt=x=>Math.max(0,Math.min(D,(x-rect.left)/rect.width*D));
+  e.preventDefault();
+  if(ruler){if(live()&&playerId===t.id)player.seekTo(timeAt(e.clientX),true);else status('이 곡을 먼저 재생하세요');return;}
+  if(mk){drag={c:t.cues[+mk.dataset.mk],el:mk,x0:e.clientX,moved:false,timeAt,D};mk.setPointerCapture(e.pointerId);return;}
+  addCueAt(t,timeAt(e.clientX),true);
 });
-body.addEventListener('change',e=>{
-  const t=trackOf(cur());if(!t)return;
-  const tc=e.target.dataset.tc;
-  if(tc){const v=parseTC(e.target.value);t[tc]=tc==='end'?v:(v||0);e.target.value=t[tc]!=null?fmt(t[tc]):'';$('#rt').textContent=fmtD(runtime(t));save();}
-  const ck=e.target.dataset.c;
-  if(ck==='t'){const v=parseTC(e.target.value),c=t.cues[+e.target.closest('tr').dataset.j];if(v!=null)c.t=v;sortCues(t);renderCues(t);save();}
-  if(ck==='type'){t.cues[+e.target.closest('tr').dataset.j].type=e.target.value;save();}
+window.addEventListener('pointermove',e=>{
+  if(!drag)return;
+  if(Math.abs(e.clientX-drag.x0)>3)drag.moved=true;
+  if(drag.moved){drag.c.t=+drag.timeAt(e.clientX).toFixed(2);drag.el.style.left=(drag.c.t/drag.D*100)+'%';}
 });
-body.addEventListener('click',e=>{
-  const b=e.target.closest('button');if(!b)return;
-  const t=trackOf(cur());if(!t)return;
-  if('pub' in b.dataset){publish(t);return;}
-  if(b.dataset.go){const n=state.tracks[state.tracks.indexOf(t)+(+b.dataset.go)];if(n)location.hash='t='+n.id;return;}
-  if(b.dataset.set){const now=ptime();if(now==null)return;t[b.dataset.set]=+now.toFixed(1);body.querySelector(`[data-tc="${b.dataset.set}"]`).value=fmt(t[b.dataset.set]);$('#rt').textContent=fmtD(runtime(t));save();return;}
-  if(b.dataset.cue){addCue(t,b.dataset.cue);return;}
-  const tr=b.closest('tr');if(!tr)return;
-  if('cplay' in b.dataset&&live()){const c=t.cues[+tr.dataset.j];player.seekTo(Math.max(0,c.t-c.lead-2),true);player.playVideo();}
-  if('cdel' in b.dataset){t.cues.splice(+tr.dataset.j,1);renderCues(t);save();}
-});
-document.addEventListener('keydown',e=>{
-  if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;
-  const t=trackOf(cur());if(!t||!live())return;
-  if(e.code==='KeyM'){addCue(t,'HIGHLIGHT');e.preventDefault();}
-  if(e.code==='Space'){player.getPlayerState()===1?player.pauseVideo():player.playVideo();e.preventDefault();}
+window.addEventListener('pointerup',()=>{
+  if(!drag)return;const d=drag;drag=null;const t=trackOf(cur());if(!t)return;
+  if(d.moved){sortCues(t);refreshCues(t);if(editCue===d.c)openPop(t,d.c);}
+  else openPop(t,d.c);
 });
 
-/* 재생 시각 + 카운트다운 미리보기 */
-setInterval(()=>{
-  const now=ptime(),el=$('#now'),cd=$('#cd');
-  if(el&&now!=null)el.textContent=fmt(now);
+mainEl.addEventListener('input',e=>{
+  const t=trackOf(cur());if(!t)return;
+  const k=e.target.dataset.k;
+  if(k){t[k]=e.target.value;if(k==='title'||k==='artist')updateHeader();save();return;}
+  const ck=e.target.dataset.c;
+  if(ck==='msg'||ck==='lead'){const c=t.cues[+e.target.closest('tr').dataset.j];c[ck]=ck==='lead'?(+e.target.value||0):e.target.value;renderTimeline(t);save();return;}
+  const pk=e.target.dataset.pop;
+  if(pk&&editCue){
+    if(pk==='msg')editCue.msg=e.target.value;
+    if(pk==='lead')editCue.lead=Math.max(0,+e.target.value||0);
+    if(pk!=='t'){renderTimeline(t);renderCues(t);save();}
+  }
+});
+mainEl.addEventListener('change',e=>{
   const t=trackOf(cur());
-  if(!t||now==null||playerId!==t.id){cd.hidden=true;return;}
+  if(e.target.id==='optAuto'){opts.auto=e.target.checked;saveOpts();return;}
+  if(!t)return;
+  const tc=e.target.dataset.tc;
+  if(tc){const v=parseTC(e.target.value);t[tc]=tc==='end'?v:(v||0);fillTC(t);renderTimeline(t);save();return;}
+  const ck=e.target.dataset.c;
+  if(ck==='t'){const v=parseTC(e.target.value),c=t.cues[+e.target.closest('tr').dataset.j];if(v!=null)c.t=v;sortCues(t);refreshCues(t);return;}
+  if(ck==='type'){t.cues[+e.target.closest('tr').dataset.j].type=e.target.value;refreshCues(t);return;}
+  if(e.target.dataset.pop==='t'&&editCue){const v=parseTC(e.target.value);if(v!=null)editCue.t=v;sortCues(t);refreshCues(t);openPop(t,editCue);}
+});
+mainEl.addEventListener('keydown',e=>{
+  if(e.target.closest('#pop')&&(e.key==='Enter'||e.key==='Escape')){e.preventDefault();closePop();}
+});
+mainEl.addEventListener('click',e=>{
+  const b=e.target.closest('button');if(!b)return;
+  const t=trackOf(cur());if(!t)return;
+  if('pub' in b.dataset){publish(t,false);return;}
+  if(b.dataset.tp){
+    const tp=b.dataset.tp;
+    if(tp==='prev')advance(-1,true);
+    if(tp==='next')advance(1,true);
+    if(tp==='play'){
+      if(!live())return;
+      if(playerId!==t.id){if(pstate()===1)return;autoplayId=t.id;showPlayer(t.id);}
+      else pstate()===1?player.pauseVideo():player.playVideo();
+    }
+    if(tp==='goto'&&playerId)location.hash='t='+playerId;
+    if(tp==='swap'&&live()){autoplayId=t.id;showPlayer(t.id);}
+    return;
+  }
+  if(b.dataset.set){if(playerId!==t.id)return status('이 곡을 먼저 재생하세요');const now=ptime();if(now==null)return;t[b.dataset.set]=+now.toFixed(1);fillTC(t);renderTimeline(t);save();return;}
+  if(b.dataset.ptype&&editCue){editCue.type=lastType=b.dataset.ptype;paintTypes(editCue);refreshCues(t);return;}
+  if(b.dataset.pp&&editCue){
+    const pp=b.dataset.pp,c=editCue;
+    if(pp==='ok')closePop();
+    if(pp==='del'){t.cues=t.cues.filter(x=>x!==c);editCue=null;$('#pop').hidden=true;refreshCues(t);}
+    if(pp==='seek'){if(playerId===t.id){player.seekTo(Math.max(0,c.t-c.lead-2),true);player.playVideo();}else status('이 곡을 먼저 재생하세요');}
+    return;
+  }
+  const tr=b.closest('tr');if(!tr)return;
+  if('cplay' in b.dataset){const c=t.cues[+tr.dataset.j];if(playerId===t.id){player.seekTo(Math.max(0,c.t-c.lead-2),true);player.playVideo();}else status('이 곡을 먼저 재생하세요');}
+  if('cdel' in b.dataset){t.cues.splice(+tr.dataset.j,1);refreshCues(t);}
+});
+document.addEventListener('keydown',e=>{
+  if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)||$('#evDlg').open)return;
+  const t=trackOf(cur());if(!t||!live())return;
+  if(e.code==='KeyM'){e.preventDefault();if(playerId!==t.id)return status('이 곡을 먼저 재생하세요');const now=ptime();if(now!=null)addCueAt(t,now,false);}
+  if(e.code==='Space'){e.preventDefault();if(playerId===t.id)pstate()===1?player.pauseVideo():player.playVideo();}
+});
+
+/* ---------- 재생 시각 · 카운트다운 · 자동 진행 ---------- */
+setInterval(()=>{
+  const now=ptime(),t=trackOf(cur()),ps=pstate();
+  const el=$('#now');if(el&&now!=null)el.textContent=fmt(now);
+  $('#playBtn').textContent=ps===1&&playerId===cur()?'❚❚':'▶';
+  // 다른 곡을 보고 있을 때 안내
+  const pt=trackOf(playerId),away=!!(t&&pt&&playerId!==t.id&&(ps===1||ps===2||ps===3));
+  $('#elsewhere').hidden=!away;if(away)$('#elseTitle').textContent=pt.title||pt.ytTitle;
+  // 곡 길이를 플레이어에서 알게 되면 저장
+  if(pt&&!pt.duration&&live()){const d=player.getDuration();if(d){pt.duration=d;pt.durSrc='player';save();if(t===pt){fillTC(t);renderTimeline(t);}}}
+  // 음악 끝 지점에 도달하면 다음 곡
+  if(pt&&opts.auto&&ps===1&&pt.end!=null&&now>=pt.end)advance(1,false);
+  // 플레이헤드 · 카운트다운
+  const cd=$('#cd'),ph=$('#ph');
+  if(!t||now==null||playerId!==t.id){cd.hidden=true;if(ph)ph.hidden=true;return;}
+  const D=tlDur(t);if(ph){ph.hidden=!D;if(D)ph.style.left=Math.min(100,now/D*100)+'%';}
   const c=t.cues.find(c=>now>=c.t-c.lead&&now<c.t+1);
   if(c){cd.hidden=false;cd.innerHTML=now<c.t?`<div><b>${Math.ceil(c.t-now)}</b><span>${esc(c.type)}</span></div>`:`<b class="hit">${esc(c.msg||c.type)}</b>`;}
   else cd.hidden=true;
 },100);
 
-/* 내보내기 / 가져오기 */
-function download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000);}
-$('#exportBtn').onclick=()=>download('listening-party-tracks.json',JSON.stringify(state,null,2),'application/json');
-$('#importInput').onchange=async e=>{
-  const f=e.target.files[0];if(!f)return;
-  try{const s=JSON.parse(await f.text());if(!Array.isArray(s.tracks))throw 0;state=s;persist();route();status('가져오기 완료');}
-  catch(err){status('JSON 형식이 맞지 않음');}
-  e.target.value='';
-};
-$('#csvBtn').onclick=()=>{
-  const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
-  const rows=[['#','id','세션','아티스트','제목','영상길이','음악시작','음악끝','러닝타임','큐시점','리드','종류','메시지'].map(q).join(',')];
-  state.tracks.forEach((t,i)=>{
-    const base=[i+1,t.id,t.session,t.artist,t.title||t.ytTitle,fmtD(t.duration),fmt(t.start||0),t.end!=null?fmt(t.end):'',fmtD(runtime(t))];
-    (t.cues.length?t.cues:[null]).forEach(c=>rows.push([...base,...(c?[fmt(c.t),c.lead,c.type,c.msg]:['','','',''])].map(q).join(',')));
-  });
-  download('listening-party-timecodes.csv','\ufeff'+rows.join('\n'),'text/csv');
-};
-
-/* ---------- 서버 연동 (참가자 앱) ---------- */
-const token=()=>$('#tokenInput').value.trim();
-async function api(path,method,data){
-  if(location.protocol==='file:')throw new Error('서버에 배포된 주소에서만 동작합니다');
-  const r=await fetch(path,{method,headers:{'content-type':'application/json','x-admin-token':token()},body:data?JSON.stringify(data):undefined});
-  if(!r.ok)throw new Error(r.status===401?'관리자 토큰이 틀렸습니다':await r.text());
-  return r.json();
-}
-async function publish(t){
-  try{
-    const r=await api('/api/now','POST',{...t,index:state.tracks.indexOf(t)+1});
-    status(`"${t.title||t.ytTitle}" 공개됨 · 접속 중 ${r.listeners}명`);refreshLive();
-  }catch(e){status('공개 실패: '+e.message);}
-}
-async function refreshLive(){
-  if(location.protocol==='file:')return;
-  try{const s=await (await fetch('/api/state')).json();$('#liveInfo').textContent=`공개 ${s.unlocked.length}곡 · 접속 ${s.listeners}명${s.now?' · 지금: '+s.now.title:''}`;}catch(e){}
-}
-$('#resetBtn').onclick=async()=>{
-  if(!confirm('공개된 곡 목록을 모두 지웁니다. 계속할까요?'))return;
-  try{await api('/api/reset','POST');status('행사 초기화 완료');refreshLive();}catch(e){status('초기화 실패: '+e.message);}
-};
-try{$('#tokenInput').value=localStorage.getItem(LS+'_admin')||'';}catch(e){}
-$('#tokenInput').oninput=()=>{try{localStorage.setItem(LS+'_admin',token());}catch(e){}};
-refreshLive();setInterval(refreshLive,10000);
-
-/* ---------- 시작 ---------- */
-function route(){renderList();renderTrack();}
+/* ================= 시작 ================= */
+function route(){renderSide();renderTrack();}
 window.addEventListener('hashchange',route);
-try{$('#keyInput').value=localStorage.getItem(LS+'_key')||'';}catch(e){}
+try{$('#keyInput').value=localStorage.getItem(LS+'_key')||'';$('#tokenInput').value=localStorage.getItem(LS+'_admin')||'';}catch(e){}
+let tokT;
+$('#tokenInput').addEventListener('input',()=>{try{localStorage.setItem(LS+'_admin',token());}catch(e){}clearTimeout(tokT);tokT=setTimeout(checkServer,600);});
+$('#evName').value=state.name;
+$('#optAuto').checked=opts.auto;
 if(state.playlistId)$('#plInput').value=state.playlistId;
 if(location.protocol==='file:')$('#warn').hidden=false;
-$('#loadBtn').onclick=load;
-$('#scanBtn').onclick=()=>state.tracks.length?scanAll():status('먼저 재생목록을 불러오세요');
 route();
+checkServer();refreshLive();setInterval(refreshLive,10000);
 const tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);
 </script>
 </body>

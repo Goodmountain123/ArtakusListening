@@ -1,75 +1,226 @@
 import { DurableObject } from "cloudflare:workers";
 
-// 참가자에게 보내도 되는 필드만 골라낸다 (선정 이유 같은 내부 메모, 큐포인트는 제외)
-const PUBLIC_FIELDS = ["id", "index", "title", "artist", "album", "year", "session", "notes", "points", "related"];
-const pick = (t) => Object.fromEntries(PUBLIC_FIELDS.map((k) => [k, t?.[k] ?? ""]));
-const EMPTY = { now: null, unlocked: [] };
+// 참가자에게 보내도 되는 곡 필드 (선정 이유·큐포인트·타임코드는 제외)
+const TRACK_FIELDS = ["id", "sid", "index", "title", "artist", "album", "year", "notes", "points", "related"];
+const pickTrack = (t) => Object.fromEntries(TRACK_FIELDS.map((k) => [k, t?.[k] ?? ""]));
+// 세션은 이름·설명·곡 수만 (곡 제목은 공개 전까지 서버에도 없음)
+const pickSession = (s) => ({
+  id: String(s?.id ?? ""),
+  name: String(s?.name ?? ""),
+  desc: String(s?.desc ?? ""),
+  count: Math.max(0, Number(s?.count) || 0),
+});
+const empty = () => ({ program: { sessions: [] }, now: null, unlocked: [], counts: {} });
+const MAX_EVENT_BYTES = 1_900_000;
+const str = (v, max) => String(v ?? "").trim().slice(0, max);
 
-/**
- * 행사 하나의 라이브 상태.
- * 서버는 관리자가 "공개"한 곡만 알고 있으므로 미래 곡은 애초에 참가자에게 갈 수 없다.
- */
 export class LiveRoom extends DurableObject {
-  async getState() {
-    return (await this.ctx.storage.get("state")) || structuredClone(EMPTY);
+  constructor(ctx, env) {
+    super(ctx, env);
+    this.lastComment = new Map(); // 참가자별 마지막 댓글 시각 (도배 방지)
   }
 
-  broadcast(state) {
-    const msg = JSON.stringify({ type: "state", ...state });
+  async getState() {
+    const s = (await this.ctx.storage.get("state")) || empty();
+    s.program ||= { sessions: [] };
+    s.unlocked ||= [];
+    s.counts ||= {};
+    return s;
+  }
+
+  send(obj) {
+    const msg = JSON.stringify(obj);
     for (const ws of this.ctx.getWebSockets()) {
       try { ws.send(msg); } catch {}
     }
   }
 
+  async setState(state) {
+    await this.ctx.storage.put("state", state);
+    this.send({ type: "state", ...state });
+  }
+
+  async ratingSummary(id, cid) {
+    const r = (await this.ctx.storage.get("r:" + id)) || {};
+    const vals = Object.values(r);
+    return {
+      avg: vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : 0,
+      n: vals.length,
+      mine: cid ? r[cid] || 0 : 0,
+    };
+  }
+
   async fetch(request) {
     const url = new URL(request.url);
+    const method = request.method;
 
-    // 참가자 실시간 연결
+    // ---------- 참가자 실시간 연결 ----------
     if (url.pathname === "/live") {
-      if (request.headers.get("Upgrade") !== "websocket") {
-        return new Response("WebSocket only", { status: 426 });
-      }
+      if (request.headers.get("Upgrade") !== "websocket") return new Response("WebSocket only", { status: 426 });
       const { 0: client, 1: server } = new WebSocketPair();
       this.ctx.acceptWebSocket(server);
       server.send(JSON.stringify({ type: "state", ...(await this.getState()) }));
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    // 현재 상태 조회
-    if (url.pathname === "/api/state" && request.method === "GET") {
+    if (url.pathname === "/api/state" && method === "GET") {
       return Response.json({ ...(await this.getState()), listeners: this.ctx.getWebSockets().length });
     }
 
-    // 관리자: 곡 공개(= 지금 재생 중으로 지정 + 해금)
-    if (url.pathname === "/api/now" && request.method === "POST") {
-      const track = pick(await request.json());
+    // ---------- 관리자: 세션 구성(이름·설명·곡 수) ----------
+    if (url.pathname === "/api/program" && method === "POST") {
+      const body = await request.json();
+      const state = await this.getState();
+      state.program = { sessions: (body.sessions || []).map(pickSession) };
+      await this.setState(state);
+      return Response.json({ ok: true });
+    }
+
+    // ---------- 참가자: 곡 상세 (별점 요약 + 댓글) ----------
+    const tm = url.pathname.match(/^\/api\/track\/([\w-]+)$/);
+    if (tm && method === "GET") {
+      const id = tm[1];
+      const state = await this.getState();
+      if (!state.unlocked.some((t) => t.id === id)) return new Response("아직 공개되지 않은 곡", { status: 403 });
+      const comments = ((await this.ctx.storage.get("c:" + id)) || [])
+        .filter((c) => !c.hidden)
+        .map(({ key, nick, text, at }) => ({ key, nick, text, at }));
+      return Response.json({ ...(await this.ratingSummary(id, url.searchParams.get("cid"))), comments });
+    }
+
+    // ---------- 참가자: 별점 ----------
+    if (url.pathname === "/api/rate" && method === "POST") {
+      const b = await request.json();
+      const id = str(b.id, 20), cid = str(b.cid, 64), score = Math.round(Number(b.score));
+      if (!id || !cid || !(score >= 1 && score <= 5)) return new Response("잘못된 요청", { status: 400 });
+      const state = await this.getState();
+      if (!state.unlocked.some((t) => t.id === id)) return new Response("아직 공개되지 않은 곡", { status: 403 });
+      const r = (await this.ctx.storage.get("r:" + id)) || {};
+      r[cid] = score;
+      await this.ctx.storage.put("r:" + id, r);
+      return Response.json(await this.ratingSummary(id, cid));
+    }
+
+    // ---------- 참가자: 댓글 ----------
+    if (url.pathname === "/api/comment" && method === "POST") {
+      const b = await request.json();
+      const id = str(b.id, 20), cid = str(b.cid, 64), nick = str(b.nick, 20), text = str(b.text, 300);
+      if (!id || !cid || !nick || !text) return new Response("닉네임과 내용을 입력하세요", { status: 400 });
+      const state = await this.getState();
+      if (!state.unlocked.some((t) => t.id === id)) return new Response("아직 공개되지 않은 곡", { status: 403 });
+      const now = Date.now();
+      if (now - (this.lastComment.get(cid) || 0) < 5000) return new Response("잠시 후에 다시 남겨주세요", { status: 429 });
+      const list = (await this.ctx.storage.get("c:" + id)) || [];
+      if (list.some((c) => c.by === cid && c.text === text && !c.hidden)) return new Response("같은 댓글이 이미 있어요", { status: 409 });
+      const comment = { key: crypto.randomUUID().slice(0, 8), by: cid, nick, text, at: now };
+      list.push(comment);
+      this.lastComment.set(cid, now);
+      await this.ctx.storage.put("c:" + id, list);
+      state.counts[id] = list.filter((c) => !c.hidden).length;
+      await this.ctx.storage.put("state", state);
+      const pub = { key: comment.key, nick, text, at: now };
+      this.send({ type: "comment", id, comment: pub, count: state.counts[id] });
+      return Response.json({ ok: true, comment: pub });
+    }
+
+    // ---------- 관리자: 댓글 숨기기 ----------
+    if (url.pathname === "/api/comment" && method === "DELETE") {
+      const { id, key } = await request.json();
+      const list = (await this.ctx.storage.get("c:" + id)) || [];
+      const c = list.find((x) => x.key === key);
+      if (!c) return new Response("없는 댓글", { status: 404 });
+      c.hidden = true;
+      await this.ctx.storage.put("c:" + id, list);
+      const state = await this.getState();
+      state.counts[id] = list.filter((x) => !x.hidden).length;
+      await this.ctx.storage.put("state", state);
+      this.send({ type: "uncomment", id, key, count: state.counts[id] });
+      return Response.json({ ok: true });
+    }
+
+    // ---------- 관리자: 곡 공개 ----------
+    if (url.pathname === "/api/now" && method === "POST") {
+      const track = pickTrack(await request.json());
       if (!track.id) return new Response("track id required", { status: 400 });
       const state = await this.getState();
       state.now = track;
       const i = state.unlocked.findIndex((t) => t.id === track.id);
       if (i >= 0) state.unlocked[i] = track;
       else state.unlocked.push(track);
-      await this.ctx.storage.put("state", state);
-      this.broadcast(state);
+      await this.setState(state);
       return Response.json({ ok: true, listeners: this.ctx.getWebSockets().length });
     }
 
-    // 관리자: 잘못 해금한 곡 되돌리기
-    if (url.pathname === "/api/unlock" && request.method === "DELETE") {
+    if (url.pathname === "/api/unlock" && method === "DELETE") {
       const { id } = await request.json();
       const state = await this.getState();
       state.unlocked = state.unlocked.filter((t) => t.id !== id);
       if (state.now?.id === id) state.now = null;
-      await this.ctx.storage.put("state", state);
-      this.broadcast(state);
+      await this.setState(state);
       return Response.json({ ok: true });
     }
 
-    // 관리자: 행사 초기화
-    if (url.pathname === "/api/reset" && request.method === "POST") {
-      await this.ctx.storage.put("state", structuredClone(EMPTY));
-      this.broadcast(EMPTY);
+    // 공개 목록·별점·댓글을 비운다 (세션 구성은 유지)
+    if (url.pathname === "/api/reset" && method === "POST") {
+      const state = await this.getState();
+      state.now = null;
+      state.unlocked = [];
+      state.counts = {};
+      for (const prefix of ["r:", "c:"]) {
+        const keys = [...(await this.ctx.storage.list({ prefix })).keys()];
+        for (let i = 0; i < keys.length; i += 128) await this.ctx.storage.delete(keys.slice(i, i + 128));
+      }
+      this.lastComment.clear();
+      await this.setState(state);
       return Response.json({ ok: true });
+    }
+
+    // ---------- 관리자: 행사 파일 저장소 ----------
+    const m = url.pathname.match(/^\/api\/events(?:\/(.+))?$/);
+    if (m) {
+      const name = m[1] ? decodeURIComponent(m[1]) : null;
+      const storage = this.ctx.storage;
+
+      if (!name) {
+        if (method !== "GET") return new Response("Not found", { status: 404 });
+        const metas = await storage.list({ prefix: "meta:" });
+        return Response.json([...metas.values()].sort((a, b) => b.updatedAt - a.updatedAt));
+      }
+      if (name.length > 100) return new Response("행사 이름이 너무 깁니다", { status: 400 });
+
+      if (method === "GET") {
+        const [text, meta] = await Promise.all([storage.get("event:" + name), storage.get("meta:" + name)]);
+        if (!text) return new Response("없는 행사", { status: 404 });
+        return new Response(`{"updatedAt":${meta?.updatedAt || 0},"event":${text}}`, {
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      if (method === "PUT") {
+        const text = await request.text();
+        if (new TextEncoder().encode(text).length > MAX_EVENT_BYTES) {
+          return new Response("행사 데이터가 너무 큽니다", { status: 413 });
+        }
+        let ev;
+        try { ev = JSON.parse(text); } catch { return new Response("JSON 형식 오류", { status: 400 }); }
+        const meta = await storage.get("meta:" + name);
+        const base = request.headers.get("x-base") || "0";
+        // 다른 기기에서 먼저 저장했으면 덮어쓰지 않는다
+        if (base !== "force" && String(meta?.updatedAt || 0) !== base) {
+          return Response.json({ error: "conflict", updatedAt: meta?.updatedAt || 0 }, { status: 409 });
+        }
+        const updatedAt = Math.max(Date.now(), (meta?.updatedAt || 0) + 1);
+        await storage.put({
+          ["event:" + name]: text,
+          ["meta:" + name]: { name, updatedAt, count: Array.isArray(ev.tracks) ? ev.tracks.length : 0 },
+        });
+        return Response.json({ ok: true, updatedAt });
+      }
+
+      if (method === "DELETE") {
+        await storage.delete(["event:" + name, "meta:" + name]);
+        return Response.json({ ok: true });
+      }
     }
 
     return new Response("Not found", { status: 404 });
@@ -89,18 +240,19 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/live" || url.pathname.startsWith("/api/")) {
-      // 상태를 바꾸는 요청은 관리자 토큰 필요
-      if (request.method !== "GET") {
+      // 상태를 바꾸는 요청과 행사 파일은 관리자 토큰 필요
+      // 별점·댓글 작성은 참가자도 가능
+      const participantWrite = request.method === "POST" && ["/api/rate", "/api/comment"].includes(url.pathname);
+      const needsToken = url.pathname.startsWith("/api/events") || (request.method !== "GET" && !participantWrite);
+      if (needsToken) {
         const token = request.headers.get("x-admin-token");
         if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) {
           return new Response("관리자 토큰이 맞지 않습니다", { status: 401 });
         }
       }
-      const room = env.LIVE.get(env.LIVE.idFromName("main"));
-      return room.fetch(request);
+      return env.LIVE.get(env.LIVE.idFromName("main")).fetch(request);
     }
 
-    // 나머지는 public 폴더의 파일
     return env.ASSETS.fetch(request);
   },
 };
