@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>THE LISTENING PARTY</title>
+<style>
+:root{--bg:#0f1014;--panel:#17181e;--line:#262833;--text:#e8e8ec;--mut:#8b8d98;--acc:#ff5a36;--ok:#3ecf8e}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+.wrap{max-width:520px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+header h1{font-size:13px;letter-spacing:.14em;margin:0}
+.conn{font-size:11px;color:var(--mut)}
+.conn i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--mut);margin-right:5px;vertical-align:middle}
+.conn.on i{background:var(--ok)}
+.now{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+.label{font-size:11px;letter-spacing:.2em;color:var(--acc);font-weight:700}
+.now h2{font-size:24px;line-height:1.3;margin:8px 0 2px}
+.now .artist{color:var(--mut)}
+.now .session{font-size:12px;color:var(--mut);margin-top:12px}
+.now .body{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);white-space:pre-wrap;font-size:14px}
+.empty{color:var(--mut);text-align:center;padding:28px 0}
+h3{font-size:11px;letter-spacing:.2em;color:var(--mut);margin:28px 0 8px;font-weight:600}
+ol{list-style:none;margin:0;padding:0}
+li{border-bottom:1px solid var(--line)}
+li summary{display:grid;grid-template-columns:28px 1fr;gap:8px;padding:12px 0;cursor:pointer;list-style:none}
+li summary::-webkit-details-marker{display:none}
+.n{color:var(--mut);font-variant-numeric:tabular-nums;font-size:12px;padding-top:2px}
+li small{display:block;color:var(--mut)}
+li .detail{padding:0 0 14px 36px;font-size:14px;white-space:pre-wrap;color:#cfd0d6}
+li .detail b{display:block;font-size:11px;color:var(--mut);letter-spacing:.1em;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><h1>THE LISTENING PARTY</h1><span class="conn" id="conn"><i></i>연결 중</span></header>
+  <section class="now" id="now"><div class="empty">곧 시작합니다</div></section>
+  <h3>지금까지 들은 곡</h3>
+  <ol id="list"></ol>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function detail(t){
+  return [['곡 해설',t.notes],['감상 포인트',t.points],['관련곡',t.related]]
+    .filter(([,v])=>v).map(([k,v])=>`<b>${k}</b>${esc(v)}`).join('');
+}
+
+function render(s){
+  const t=s.now;
+  $('#now').innerHTML=t
+    ? `<div class="label">NOW PLAYING</div><h2>${esc(t.title)}</h2><div class="artist">${esc(t.artist)}${t.year?' · '+esc(t.year):''}</div>
+       ${t.session?`<div class="session">${esc(t.session)}</div>`:''}
+       ${detail(t)?`<div class="body">${detail(t)}</div>`:''}`
+    : '<div class="empty">곧 시작합니다</div>';
+  const list=[...s.unlocked].reverse();
+  $('#list').innerHTML=list.length
+    ? list.map((t,i)=>`<li><details><summary><span class="n">${String(list.length-i).padStart(2,'0')}</span><span>${esc(t.title)}<small>${esc(t.artist)}</small></span></summary><div class="detail">${detail(t)||'<span style="color:var(--mut)">해설 없음</span>'}</div></details></li>`).join('')
+    : '<li class="empty" style="border:0">아직 없음</li>';
+}
+
+let delay=1000;
+function connect(){
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/live');
+  let ping;
+  ws.onopen=()=>{delay=1000;$('#conn').className='conn on';$('#conn').lastChild.textContent='연결됨';ping=setInterval(()=>ws.send('ping'),25000);};
+  ws.onmessage=e=>{if(e.data==='pong')return;const m=JSON.parse(e.data);if(m.type==='state')render(m);};
+  ws.onclose=()=>{clearInterval(ping);$('#conn').className='conn';$('#conn').lastChild.textContent='재연결 중';setTimeout(connect,delay);delay=Math.min(delay*2,15000);};
+}
+connect();
+</script>
+</body>
+</html>

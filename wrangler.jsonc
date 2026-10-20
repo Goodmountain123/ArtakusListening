@@ -1,0 +1,20 @@
+{
+  // Cloudflare Worker 설정 파일
+  "name": "artakus-listening",
+  "main": "src/index.js",
+  "compatibility_date": "2025-09-01",
+
+  // public 폴더의 HTML 파일들을 그대로 서빙
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  // 실시간 동기화(현재 곡, 해금 목록)를 담당하는 Durable Object
+  "durable_objects": {
+    "bindings": [{ "name": "LIVE", "class_name": "LiveRoom" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LiveRoom"] }],
+
+  "observability": { "enabled": true }
+}
