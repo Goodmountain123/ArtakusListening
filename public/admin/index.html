@@ -330,7 +330,7 @@ try{Object.assign(opts,JSON.parse(localStorage.getItem(LS+'_opts')||'{}'));}catc
 const saveOpts=()=>{try{localStorage.setItem(LS+'_opts',JSON.stringify(opts));}catch(e){}};
 function persist(){try{localStorage.setItem(LS,JSON.stringify(state));}catch(e){}}
 let persistT;
-function save(render=true){clearTimeout(persistT);persistT=setTimeout(persist,250);scheduleSync();if(render)renderSide();}
+function save(render=true){state.dirty=true;clearTimeout(persistT);persistT=setTimeout(persist,250);scheduleSync();if(render)renderSide();}
 
 const cur=()=>(location.hash.match(/#t=([\w-]+)/)||[])[1]||null;
 const trackOf=id=>state.tracks.find(t=>t.id===id);
@@ -630,7 +630,7 @@ async function syncNow(force){
   if(conflict&&!force){setSave('⚠ 서버에 다른 버전이 있어 저장을 멈췄습니다 — 행사 ▾',true);return false;}
   try{
     const j=await api('/api/events/'+encodeURIComponent(state.name),'PUT',state,{'x-base':force?'force':String(state.serverAt||0)});
-    state.serverAt=j.updatedAt;conflict=false;persist();
+    state.serverAt=j.updatedAt;conflict=false;state.dirty=false;persist();
     setSave('서버 저장됨 '+new Date(j.updatedAt).toLocaleTimeString('ko-KR',{hour:'2-digit',minute:'2-digit'}));
     postProgram().catch(()=>{});
     return true;
@@ -644,19 +644,23 @@ async function checkServer(){
   if(location.protocol==='file:'||!token())return syncNow();
   try{
     const list=await api('/api/events');
+    // 처음 쓰는 컴퓨터(빈 상태)면 빈 행사를 만들지 말고 서버의 최근 행사를 연다
+    if(!state.tracks.length&&!state.serverAt&&list.length&&!list.some(x=>x.name===state.name)){await openEvent(list[0].name,true);return;}
     const m=list.find(x=>x.name===state.name);
     if(!m)return syncNow();
     if(m.updatedAt===state.serverAt){conflict=false;setSave('서버와 동기화됨');postProgram().catch(()=>{});}
-    else{conflict=true;setSave('⚠ 서버에 다른 버전이 있어 저장을 멈췄습니다 — 행사 ▾',true);}
+    // 서버가 더 새것이고 이 컴퓨터에 안 올린 수정이 없으면 → 서버 버전을 자동으로 불러온다
+    else if(!state.dirty||!state.tracks.length){await openEvent(state.name,true);}
+    else{conflict=true;setSave('⚠ 이 컴퓨터의 수정과 서버의 다른 버전이 겹칩니다 — 행사 ▾에서 고르세요',true);}
   }catch(e){setSave(e.status===401?'관리자 토큰이 틀렸습니다':'서버 확인 실패',true);}
 }
-async function openEvent(name){
+async function openEvent(name,auto){
   try{
     const r=await api('/api/events/'+encodeURIComponent(name));
-    state=migrate(r.event);state.name=name;state.serverAt=r.updatedAt;conflict=false;persist();
+    state=migrate(r.event);state.name=name;state.serverAt=r.updatedAt;state.dirty=false;conflict=false;persist();
     sel.clear();editCue=null;$('#evName').value=state.name;lastProgram='';
     if(location.hash)location.hash='';else route();
-    setSave('서버에서 불러옴');postProgram().catch(()=>{});$('#evDlg').close();
+    setSave(auto?'서버의 최신 버전을 불러왔습니다':'서버에서 불러옴');postProgram().catch(()=>{});if($('#evDlg').open)$('#evDlg').close();
   }catch(e){alert('불러오기 실패: '+e.message);}
 }
 async function renderEvents(){
