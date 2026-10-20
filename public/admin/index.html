@@ -933,7 +933,8 @@ function screenTrack(t){
     img:t.img?`/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}`:ytThumb(t.id),
     session:s?{num:state.sessions.indexOf(s)+1,name:s.name,desc:s.desc}:null,
     lyrics:lyrLines(t).filter(l=>l.text&&l.t!=null).map(l=>({text:l.text,t:l.t})).sort((a,b)=>a.t-b.t),
-    cues:t.cues.map(c=>({t:c.t,lead:cueLead(t,c),beat:cueBeat(t,c),hold:cueHold(t,c),type:c.type,cd:c.cd||'',msg:c.msg||''})),bg:t.bg||''};
+    cues:t.cues.map(c=>({t:c.t,lead:cueLead(t,c),beat:cueBeat(t,c),hold:cueHold(t,c),type:c.type,cd:c.cd||'',msg:c.msg||''})),bg:t.bg||'',
+    dur:tlDur(t)||0};
 }
 function postScreen(force){
   if(!bc)return;

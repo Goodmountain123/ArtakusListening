@@ -72,6 +72,10 @@ body.show-ctrl .ctrl{opacity:1}
 .rx i{display:block;font-style:normal;animation:sway var(--sw,1.6s) ease-in-out infinite alternate}
 @keyframes rise{0%{transform:translateY(0) scale(.6);opacity:0}10%{opacity:1;transform:translateY(-6vh) scale(1)}75%{opacity:.95}100%{transform:translateY(-62vh) scale(1.15);opacity:0}}
 @keyframes sway{from{transform:translateX(calc(var(--amp,1.4vw) * -1)) rotate(-8deg)}to{transform:translateX(var(--amp,1.4vw)) rotate(8deg)}}
+.tlb{position:fixed;left:0;right:0;bottom:0;height:.32vw;min-height:3px;background:rgba(255,255,255,.14);transition:opacity .6s}
+.tlb-fill{position:absolute;left:0;top:0;bottom:0;background:rgba(255,255,255,.55)}
+.tlb-mk{position:absolute;bottom:0;width:.42vw;min-width:4px;height:1.1vw;min-height:10px;margin-left:-.21vw;border-radius:.21vw .21vw 0 0;background:var(--acc)}
+.tlb-mk.past{opacity:.35}
 .toast{position:fixed;left:50%;top:2vw;transform:translateX(-50%);background:rgba(0,0,0,.7);border-radius:8px;padding:10px 16px;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.on{opacity:1}
 .link{position:fixed;left:1.2vw;bottom:1vw;font-size:12px;color:rgba(255,255,255,.45)}
@@ -95,6 +99,7 @@ body.show-ctrl .ctrl{opacity:1}
 <div class="lyr" id="lyr" hidden><div class="lyr-in" id="lyrIn"></div></div>
 <div class="cd" id="cd" hidden></div>
 <div class="reacts" id="reacts"></div>
+<div class="tlb" id="tlb" hidden><div class="tlb-fill" id="tlbFill"></div><div id="tlbMarks"></div></div>
 
 <div class="ctrl"><span id="wsState">서버 연결 중…</span><span id="rxCount" hidden></span><span id="ofs"></span><button id="fsBtn">전체화면 (F)</button></div>
 <div class="toast" id="toast"></div>
@@ -181,6 +186,18 @@ function updateLyrics(now){
   });
   // 지금 줄이 5줄 창의 가운데(3번째)에 오도록
   $('#lyrIn').style.transform=`translateY(calc(var(--row) * ${2-center}))`;
+}
+
+/* ---------- 맨 아래 타임라인 (큐 위치만) ---------- */
+let tlbKey='';
+function updateTimeline(now){
+  const t=track(),D=t&&linked()&&t.dur;
+  $('#tlb').hidden=!D;if(!D)return;
+  const key=t.id+':'+D+':'+JSON.stringify((t.cues||[]).map(c=>c.t));
+  if(key!==tlbKey){tlbKey=key;
+    $('#tlbMarks').innerHTML=(t.cues||[]).map(c=>`<div class="tlb-mk" data-t="${c.t}" style="left:${Math.min(100,c.t/D*100)}%"></div>`).join('');}
+  $('#tlbFill').style.width=Math.min(100,Math.max(0,now/D*100))+'%';
+  document.querySelectorAll('.tlb-mk').forEach(el=>el.classList.toggle('past',+el.dataset.t<now));
 }
 
 /* ---------- 큐 카운트다운 ---------- */
@@ -277,8 +294,8 @@ function frame(){
   const l=linked();
   if(l!==wasLinked){wasLinked=l;$('#link').hidden=l;shownId=null;renderInfo();}
   const t=track();
-  if(t&&l&&clock.id===t.id){const now=nowT()-offset;updateLyrics(now);updateCue(now);}
-  else{updateCue(-1);}
+  if(t&&l&&clock.id===t.id){const now=nowT()-offset;updateLyrics(now);updateCue(now);updateTimeline(now);}
+  else{updateCue(-1);$('#tlb').hidden=true;}
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
