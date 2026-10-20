@@ -918,6 +918,11 @@ async function renderBgTab(t,etabs){
   <section class="card"><h3>배경 영상<em>송출 화면 뒤에서 반복 재생됩니다 · 소리는 나오지 않습니다 · 영상은 이 컴퓨터의 브라우저에 저장됩니다</em></h3>
     <div class="bgnow"><div class="bgprev" id="bgPrev"></div>
       <div><div style="font-size:13px">이 곡의 배경: <b>${cur?esc(cur.name):'없음'}</b></div>
+        ${cur?`<div class="row" style="margin:8px 0 2px;flex-wrap:wrap;font-size:13px">
+          <label class="tog" style="color:var(--text)"><input type="radio" name="bgmode" data-bgmode="loop" ${t.bgSync?'':'checked'}> 반복 재생</label>
+          <label class="tog" style="color:var(--text)"><input type="radio" name="bgmode" data-bgmode="sync" ${t.bgSync?'checked':''}> 음악과 동기화</label>
+          ${t.bgSync?`<span class="mut" style="font-size:12px;margin-left:6px">영상 시작 = 곡</span><input data-bgofs value="${fmt(t.bgOffset||0)}" style="width:80px"><button data-bgofsnow title="지금 재생 위치를 영상 시작점으로">⌖ 지금 위치</button>`:''}</div>
+          <p class="hint" style="margin:0 0 8px">${t.bgSync?'곡을 재생·멈춤·이동하면 영상도 같이 따라갑니다. 영상이 끝나면 마지막 장면에서 멈춥니다.':'곡과 상관없이 영상을 계속 반복합니다.'}</p>`:''}
         <p class="hint" style="margin:4px 0 10px">${cur?'':'영상이 없으면 앨범 이미지를 흐리게 깔아 배경으로 씁니다.'}</p>
         <div class="row"><label class="btn primary" style="margin:0;font-size:13px">영상 올리기<input type="file" accept="video/*" multiple data-vup hidden></label>${cur?'<button data-vnone>배경 영상 빼기</button>':''}</div></div></div>
     <h4>영상 라이브러리 (${V.length}) — 눌러서 이 곡에 지정, 여러 곡에 같은 영상을 써도 됩니다</h4>
@@ -929,7 +934,8 @@ async function renderBgTab(t,etabs){
   </section>`;
   // 미리보기 · 라이브러리 썸네일
   const prev=$('#bgPrev');
-  if(cur&&vhave.has(cur.vid)){const u=await videoURL(cur.vid);prev.innerHTML=`<video muted loop playsinline autoplay src="${u}"></video><span class="tag">미리보기</span>`;}
+  if(cur&&vhave.has(cur.vid)){const u=await videoURL(cur.vid);prev.innerHTML=t.bgSync?`<video id="bgPrevVid" muted playsinline preload="auto" src="${u}"></video><span class="tag">미리보기 · 곡과 동기화</span>`
+    :`<video muted loop playsinline autoplay src="${u}"></video><span class="tag">미리보기</span>`;}
   else prev.innerHTML=`<img src="${t.img?`/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}`:ytThumb(t.id)}" alt=""><span class="tag">앨범 이미지 배경</span>`;
   document.querySelectorAll('#vlib video[data-vsrc]').forEach(async el=>{el.src=await videoURL(el.dataset.vsrc)||'';});
 }
@@ -947,6 +953,19 @@ async function uploadVideos(t,files){
   save();renderTrack();status(`영상 ${files.length}개 저장됨${files.length>1?' · 첫 번째 영상을 이 곡에 지정했습니다':''}`);
 }
 
+// 영상을 곡 시간에 맞춘다: 크게 어긋나면 바로 이동, 조금 어긋나면 속도를 살짝 조절해 따라잡기
+function syncVideo(v,target,playing){
+  if(!v||v.readyState<1)return;
+  const dur=isFinite(v.duration)?v.duration:Infinity;
+  const tgt=Math.max(0,Math.min(target,dur-0.05));
+  const live=playing&&target>=0&&target<dur;
+  const drift=v.currentTime-tgt;
+  if(Math.abs(drift)>(live?0.3:0.05)){try{v.currentTime=tgt;}catch(e){}v.playbackRate=1;}
+  else if(live)v.playbackRate=Math.min(1.05,Math.max(0.95,1-drift*0.5));
+  if(live&&v.paused)v.play().catch(()=>{});
+  if(!live&&!v.paused)v.pause();
+}
+
 /* ---------- 송출 화면과 연결 (같은 브라우저의 다른 창) ---------- */
 const bc='BroadcastChannel' in window?new BroadcastChannel('lp-screen'):null;
 let lastScreen='',screenTick=0;
@@ -956,6 +975,7 @@ function screenTrack(t){
     img:t.img?`/img/${t.id}?v=${t.img}&k=${encodeURIComponent(token())}`:ytThumb(t.id),
     session:s?{num:state.sessions.indexOf(s)+1,name:s.name,desc:s.desc}:null,
     lyrics:lyrLines(t).filter(l=>l.text&&l.t!=null).map(l=>({text:l.text,t:l.t})).sort((a,b)=>a.t-b.t),
+    bgSync:!!t.bgSync,bgOffset:t.bgOffset||0,
     cues:t.cues.filter(showsOverlay).map(c=>({t:c.t,lead:cueLead(t,c),beat:(cueBeat(t,c)||1)*cueStep(c),hold:cueHold(t,c),type:c.type==='REVEAL'?'':c.type,cd:c.cd||'',msg:c.msg||'',emoji:c.emoji||'',burst:c.burst||24})),
     marks:t.cues.map(c=>c.t),reveal:revealAt(t),bg:t.bg||'',
     dur:tlDur(t)||0};
@@ -1153,6 +1173,8 @@ mainEl.addEventListener('change',e=>{
   if(!t)return;
   if(e.target.dataset.bpm!==undefined){const v=Math.round(+e.target.value*10)/10;t.bpm=v>0?v:null;if(!t.bpm)delete t.beat0;taps=[];tapSong=[];save();renderTrack();return;}
   if(e.target.dataset.img!==undefined){uploadImg(t,e.target.files[0]);e.target.value='';return;}
+  if(e.target.dataset.bgmode){t.bgSync=e.target.dataset.bgmode==='sync';if(!t.bgSync)delete t.bgOffset;save();renderTrack();return;}
+  if(e.target.dataset.bgofs!==undefined){const v=parseTC(e.target.value);t.bgOffset=Math.max(0,v||0);e.target.value=fmt(t.bgOffset);save();return;}
   if(e.target.dataset.vup!==undefined){uploadVideos(t,e.target.files);e.target.value='';return;}
   const tc=e.target.dataset.tc;
   if(tc){const v=parseTC(e.target.value);t[tc]=tc==='end'?v:(v||0);fillTC(t);renderTimeline(t);save();return;}
@@ -1183,6 +1205,7 @@ mainEl.addEventListener('click',e=>{
   if(b.dataset.vdel){const v=state.visuals.find(x=>x.vid===b.dataset.vdel),n=state.tracks.filter(x=>x.bg===v.vid).length;
     if(!confirm(`"${v.name}" 영상을 라이브러리에서 지웁니다.${n?` ${n}곡의 배경에서도 빠집니다.`:''}`))return;
     idb.del(v.vid).catch(()=>{});state.visuals=state.visuals.filter(x=>x!==v);state.tracks.forEach(x=>{if(x.bg===v.vid)delete x.bg;});save();renderTrack();return;}
+  if('bgofsnow' in b.dataset){if(playerId!==t.id)return status('이 곡을 먼저 재생하세요');t.bgOffset=+(ptime()||0).toFixed(2);save();renderTrack();return;}
   if('vnone' in b.dataset){delete t.bg;save();renderTrack();return;}
   if('lapply' in b.dataset){applyLyrics(t,$('#lyrIn').value);save();renderTrack();status(`가사 ${lyrLines(t).filter(l=>l.text).length}구절 반영`);return;}
   if(b.dataset.lshift){const d=+b.dataset.lshift;lyrLines(t).forEach(l=>{if(l.t!=null)l.t=Math.max(0,+(l.t+d).toFixed(2));});save();renderLyrics(t);return;}
@@ -1229,6 +1252,7 @@ document.addEventListener('keydown',e=>{
 /* ---------- 재생 시각 · 카운트다운 · 자동 진행 ---------- */
 setInterval(()=>{
   if(++screenTick%2===0)postScreen();
+  {const pv=$('#bgPrevVid'),ct=trackOf(cur());if(pv&&ct&&ct.bgSync)syncVideo(pv,playerId===ct.id?(ptime()||0)-(ct.bgOffset||0):0,playerId===ct.id&&pstate()===1);}
   const now=ptime(),t=trackOf(cur()),ps=pstate();
   const el=$('#now');if(el&&now!=null)el.textContent=fmt(now);
   $('#playBtn').textContent=ps===1&&playerId===cur()?'❚❚':'▶';
