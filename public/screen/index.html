@@ -210,6 +210,7 @@ async function setBg(t){
       if(!urls[t.bg]){const blob=await idb.get(t.bg);if(blob)urls[t.bg]=URL.createObjectURL(blob);}
       if(key!==bgKey)return;
       if(urls[t.bg]){
+        $('#bgimg').style.backgroundImage=t.img?`url("${t.img.replace(/"/g,'%22')}")`:'none';
         const next=$('#v'+(1-front)),cur=$('#v'+front);
         next.loop=!t.bgSync;next.src=urls[t.bg];next.currentTime=0;
         if(!t.bgSync)await next.play().catch(()=>{});
@@ -384,7 +385,15 @@ function frame(){
   if(l!==wasLinked){wasLinked=l;$('#link').hidden=l;shownId=null;renderInfo();}
   const t=track();
   if(t&&isHidden()!==hiddenNow)renderInfo();
-  if(t&&t.bg&&t.bgSync&&l&&clock.id===t.id)syncVideo($('#v'+front),nowT()-offset-(t.bgOffset||0),clock.playing);
+  if(t&&t.bg&&t.bgSync&&l&&clock.id===t.id){
+    const v=$('#v'+front),target=nowT()-offset-(t.bgOffset||0);
+    syncVideo(v,target,clock.playing);
+    // 영상이 없는 구간(시작 전·끝난 뒤)은 원래 배경
+    if(v.getAttribute('src')&&v.readyState>=1){
+      const inRange=target>=0&&target<(isFinite(v.duration)?v.duration:Infinity);
+      if(v.classList.contains('on')!==inRange){v.classList.toggle('on',inRange);$('#bgimg').classList.toggle('on',!inRange&&!!t.img);}
+    }
+  }
   if(t&&l&&clock.id===t.id){const now=nowT()-offset;updateLyrics(now);updateCue(now);updateTimeline(now);}
   else{updateCue(-1);$('#tlb').hidden=true;}
   requestAnimationFrame(frame);
