@@ -77,7 +77,7 @@ body.show-ctrl .ctrl{opacity:1}
 .tlb-mk{position:absolute;bottom:0;width:.42vw;min-width:4px;height:1.1vw;min-height:10px;margin-left:-.21vw;border-radius:.21vw .21vw 0 0;background:var(--acc)}
 .tlb-mk.past{opacity:.35}
 .upd{position:fixed;right:1.4vw;bottom:1.4vw;font-size:13px;background:rgba(245,184,74,.9);color:#111;border-radius:6px;padding:6px 10px;font-weight:600}
-.info.mystery .art{background:#000;object-position:-9999px}
+.info.mystery .art{visibility:hidden}
 .info .q{display:none}
 /* 곡 정보가 공개되는 순간 */
 @keyframes revealIn{from{opacity:0;transform:translateY(.6vw)}to{opacity:1;transform:none}}
@@ -85,7 +85,8 @@ body.show-ctrl .ctrl{opacity:1}
 .info.revealing .title{animation-delay:.25s}.info.revealing .sub{animation-delay:.45s}
 .info.revealing .notes{animation-delay:.7s}.info.revealing .cm{animation-delay:.9s}
 .lyr.revealing{animation:revealIn 1.4s ease .5s both}
-.artbox{position:relative;flex:none}
+.artbox{position:relative;flex:none;width:10.5vw;height:10.5vw;border-radius:.7vw;background:#000;box-shadow:0 .8vw 2.4vw rgba(0,0,0,.55)}
+.art.broken{visibility:hidden}
 /* 큐가 터질 때 이모지 폭죽 */
 .fw{position:fixed;left:var(--x);top:var(--y);font-size:var(--sz);pointer-events:none;z-index:5;will-change:transform,opacity;
   animation:fw var(--d) cubic-bezier(.12,.75,.3,1) forwards;filter:drop-shadow(0 .2vw .5vw rgba(0,0,0,.35))}
@@ -111,7 +112,7 @@ body.show-ctrl .ctrl{opacity:1}
 <div class="idle" id="idle"><div><h1>THE LISTENING PARTY</h1><p>곧 시작합니다</p></div></div>
 
 <div class="info" id="info" hidden>
-  <div class="row"><div class="artbox"><img class="art" id="art" alt=""><span class="q">?</span></div><div>
+  <div class="row"><div class="artbox"><img class="art" id="art" alt="" onerror="this.classList.add('broken')" onload="this.classList.remove('broken')"><span class="q">?</span></div><div>
     <div class="sess" id="sess"></div><div class="title" id="title"></div><div class="sub" id="sub"></div></div></div>
   <p class="notes" id="notes"></p>
   <div class="cm" id="cm" hidden></div>
