@@ -218,8 +218,8 @@ dialog h3{margin:0 0 12px;font-size:15px}
 const TYPES=['DROP','SING','SHOUT','MOVE','HIGHLIGHT'];
 const TCOL={DROP:'#ff5a36',SING:'#4ea1ff',SHOUT:'#f5b84a',MOVE:'#3ecf8e',HIGHLIGHT:'#c58bff'};
 const DEFAULT_SESSIONS=['세로토닌 & 옥시토신','미드나잇 드라이브','움직여!','론리 시티 서울','축제의 시간'];
-const F=[['title','제목'],['artist','아티스트'],['album','앨범'],['year','발매연도'],['tension','텐션 (1–10)','num'],
-  ['reason','선정 이유 (참가자에게 안 보임)','area'],['points','감상 포인트','area'],['notes','곡 해설','area'],['related','관련곡 (한 줄에 하나)','area']];
+const F=[['title','제목'],['artist','아티스트'],['album','앨범'],['year','발매연도'],
+  ['notes','곡 해설','area'],['reason','선정 이유 (참가자에게 안 보임)','area'],['related','관련곡 (한 줄에 하나)','area']];
 const LS='lp_proto_v1';
 const $=s=>document.querySelector(s);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
@@ -240,11 +240,15 @@ function parseVid(v){v=v.trim();const m=v.match(/(?:v=|youtu\.be\/|shorts\/|embe
 function errMsg(c){return({2:'잘못된 영상 ID',5:'HTML5 재생 오류',100:'삭제/비공개 영상',101:'임베드 차단',150:'임베드 차단',153:'리퍼러 없음 — file://로 열었음'})[c]||('오류 '+c);}
 
 /* ================= 상태 ================= */
-function blank(id){return{id,ytTitle:'',ytChannel:'',duration:null,durSrc:'',embed:'unknown',err:'',title:'',artist:'',album:'',year:'',tension:'',reason:'',points:'',notes:'',related:'',start:0,end:null,cues:[]};}
+function blank(id){return{id,ytTitle:'',ytChannel:'',duration:null,durSrc:'',embed:'unknown',err:'',title:'',artist:'',album:'',year:'',reason:'',notes:'',related:'',start:0,end:null,cues:[]};}
 function migrate(s){
   s=s&&typeof s==='object'?s:{};
   s.tracks=Array.isArray(s.tracks)?s.tracks:[];
-  s.tracks.forEach(t=>{t.cues=Array.isArray(t.cues)?t.cues:[];prefill(t);});
+  s.tracks.forEach(t=>{
+    t.cues=Array.isArray(t.cues)?t.cues:[];prefill(t);
+    if(t.points){t.notes=[t.notes,t.points].filter(Boolean).join('\n\n');}
+    delete t.points;delete t.tension;
+  });
   if(!Array.isArray(s.sessions)){
     // 이전 버전(곡마다 session 문자열) → 세션 목록으로
     s.sessions=DEFAULT_SESSIONS.map((n,i)=>{const full=pad(i+1)+' '+n;return{id:'s'+(i+1),name:n,desc:'',ids:s.tracks.filter(t=>t.session===full).map(t=>t.id)};});

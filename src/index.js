@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 
 // 참가자에게 보내도 되는 곡 필드 (선정 이유·큐포인트·타임코드는 제외)
-const TRACK_FIELDS = ["id", "sid", "index", "title", "artist", "album", "year", "notes", "points", "related"];
+const TRACK_FIELDS = ["id", "sid", "index", "title", "artist", "album", "year", "notes", "related"];
 const pickTrack = (t) => Object.fromEntries(TRACK_FIELDS.map((k) => [k, t?.[k] ?? ""]));
 // 세션은 이름·설명·곡 수만 (곡 제목은 공개 전까지 서버에도 없음)
 const pickSession = (s) => ({

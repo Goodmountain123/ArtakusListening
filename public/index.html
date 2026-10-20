@@ -200,7 +200,7 @@ const fmtTime=at=>{const d=new Date(at);return d.toLocaleTimeString('ko-KR',{hou
 function sheetHTML(t){
   const sessions=S.program?.sessions||[],s=sessions.find(x=>x.id===t.sid);
   const mine=detail?.mine||myRates[t.id]||0;
-  const info=[['곡 해설',t.notes],['감상 포인트',t.points],['관련곡',t.related]].filter(([,v])=>v);
+  const info=[['곡 해설',t.notes],['관련곡',t.related]].filter(([,v])=>v);
   const meta=[t.artist,t.album,t.year].filter(Boolean).map(esc).join(' · ');
   return `<button class="close" data-close aria-label="닫기">${I.x}</button>
     ${s?`<div class="p-sess">SESSION ${pad(sessions.indexOf(s)+1)} · ${esc(s.name)}</div>`:''}
