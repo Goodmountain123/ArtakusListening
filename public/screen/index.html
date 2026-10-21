@@ -99,6 +99,10 @@ body.show-ctrl .ctrl{opacity:1}
 .fw-ring{position:fixed;left:var(--x);top:var(--y);width:2vw;height:2vw;border-radius:50%;pointer-events:none;z-index:4;
   border:.25vw solid rgba(255,255,255,.85);box-shadow:0 0 2vw rgba(255,220,150,.8);animation:ring .7s ease-out forwards}
 @keyframes ring{from{transform:translate(-50%,-50%) scale(.2);opacity:1}to{transform:translate(-50%,-50%) scale(9);opacity:0}}
+/* 소리용 YouTube 플레이어: 화면에는 보이지 않게 */
+#ytWrap{position:fixed;left:0;top:0;width:320px;height:180px;opacity:0;pointer-events:none;z-index:-1}
+.tap{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:rgba(0,0,0,.75);border:1px solid rgba(255,255,255,.3);border-radius:12px;padding:16px 22px;font-size:16px;cursor:pointer;z-index:20;text-align:center}
+.tap small{display:block;color:var(--mut);font-size:12px;margin-top:4px}
 .toast{position:fixed;left:50%;top:2vw;transform:translateX(-50%);background:rgba(0,0,0,.7);border-radius:8px;padding:10px 16px;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none}
 .toast.on{opacity:1}
 .link{position:fixed;left:1.2vw;bottom:1vw;font-size:12px;color:rgba(255,255,255,.45)}
@@ -125,7 +129,9 @@ body.show-ctrl .ctrl{opacity:1}
 <div id="fwBox"></div>
 <div class="tlb" id="tlb" hidden><div class="tlb-fill" id="tlbFill"></div><div id="tlbMarks"></div></div>
 
-<div class="ctrl"><span id="wsState">서버 연결 중…</span><span id="rxCount" hidden></span><span id="ofs"></span><button id="fsBtn">전체화면 (F)</button></div>
+<div class="ctrl"><span id="wsState">서버 연결 중…</span><span id="rxCount" hidden></span><span id="ofs"></span><button id="sndBtn">소리 (S)</button><button id="fsBtn">전체화면 (F)</button></div>
+<div id="ytWrap"><div id="ytp"></div></div>
+<div class="tap" id="tapToSound" hidden>🔊 화면을 한 번 클릭하면 소리가 나옵니다<small>브라우저 정책상 처음 한 번은 클릭이 필요합니다</small></div>
 <div class="upd" id="updBar" hidden>새 버전 — 관리자 창과 이 창을 새로고침하세요 (F5)</div>
 <div class="toast" id="toast"></div>
 <div class="link" id="link">관리자 화면 연결 대기 중 — 관리자 화면을 열어두세요 (다른 컴퓨터라면 「송출 링크 복사」로 받은 링크로 여세요)</div>
@@ -418,6 +424,48 @@ function frame(){
 }
 requestAnimationFrame(frame);
 
+/* ---------- 소리: 숨은 YouTube 플레이어가 관리자 화면의 재생 위치를 따라간다 ---------- */
+// 송출 링크로 연 다른 컴퓨터는 기본으로 소리 켬, 같은 컴퓨터 창은 기본으로 끔 (두 번 나지 않게)
+let soundOn=(()=>{try{const v=localStorage.getItem('lp_screen_sound'+(SKEY?'_remote':''));if(v!==null)return v==='1';}catch(e){}return !!SKEY;})();
+let yt=null,ytReady=false,ytVid=null,gestured=false,lastSeek=0;
+function paintSound(){
+  $('#sndBtn').textContent=soundOn?'🔊 소리 켜짐 (S)':'🔇 소리 꺼짐 (S)';
+  $('#tapToSound').hidden=!(soundOn&&!gestured);
+}
+function setSound(on){
+  soundOn=on;try{localStorage.setItem('lp_screen_sound'+(SKEY?'_remote':''),on?'1':'0');}catch(e){}
+  paintSound();if(!on&&ytReady){try{yt.pauseVideo();}catch(e){}}
+  toast(on?'송출 화면에서 소리를 냅니다':'송출 화면 소리를 껐습니다');
+}
+function gesture(){if(gestured)return;gestured=true;paintSound();if(ytReady){try{yt.unMute();yt.setVolume(100);}catch(e){}}}
+document.addEventListener('pointerdown',gesture,true);
+$('#tapToSound').addEventListener('click',gesture);
+$('#sndBtn').onclick=()=>setSound(!soundOn);
+window.onYouTubeIframeAPIReady=()=>{
+  yt=new YT.Player('ytp',{width:320,height:180,playerVars:{playsinline:1,controls:0,disablekb:1,rel:0},
+    events:{onReady:()=>{ytReady=true;if(gestured){yt.unMute();yt.setVolume(100);}else yt.mute();}}});
+};
+{const tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);}
+setInterval(()=>{
+  if(!ytReady)return;
+  const t=track(),on=soundOn&&gestured&&linked()&&t&&clock.id&&clock.id===t.id;
+  if(!on){if(yt.getPlayerState()===1)yt.pauseVideo();return;}
+  const target=nowT(),st=yt.getPlayerState();
+  if(ytVid!==clock.id){
+    ytVid=clock.id;lastSeek=Date.now();
+    if(clock.playing)yt.loadVideoById({videoId:clock.id,startSeconds:target});
+    else yt.cueVideoById({videoId:clock.id,startSeconds:target});
+    return;
+  }
+  if(yt.isMuted&&yt.isMuted())yt.unMute();
+  if(clock.playing&&st!==1&&st!==3)yt.playVideo();
+  if(!clock.playing&&st===1)yt.pauseVideo();
+  // 0.4초 넘게 어긋나면 맞춘다 (방금 맞췄으면 잠깐 기다림)
+  const drift=yt.getCurrentTime()-target;
+  if(Math.abs(drift)>0.4&&Date.now()-lastSeek>1500&&st!==3){yt.seekTo(target,true);lastSeek=Date.now();}
+},400);
+paintSound();
+
 /* ---------- 전체화면 · 싱크 조절 · 커서 숨김 ---------- */
 function toggleFs(){
   if(document.fullscreenElement)document.exitFullscreen();
@@ -429,7 +477,9 @@ function showOfs(){$('#ofs').textContent=`싱크 ${offset>=0?'+':''}${offset.toF
 showOfs();
 let toastT;function toast(m){$('#toast').textContent=m;$('#toast').classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>$('#toast').classList.remove('on'),1800);}
 document.addEventListener('keydown',e=>{
+  gesture();
   if(e.key==='f'||e.key==='F'||e.key==='ㄹ'){toggleFs();}
+  if(e.key==='s'||e.key==='S'||e.key==='ㄴ'){setSound(!soundOn);}
   if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
     offset=Math.round((offset+(e.key==='ArrowRight'?0.1:-0.1))*10)/10;
     try{localStorage.setItem('lp_screen_offset',offset);}catch(err){}

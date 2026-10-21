@@ -249,6 +249,7 @@ dialog h3{margin:0 0 12px;font-size:15px}
         <button data-tp="prev" title="이전 곡">⏮</button><button data-tp="play" id="playBtn" style="min-width:42px">▶</button><button data-tp="next" title="다음 곡">⏭</button>
         <span id="now">0:00.0</span>
         <span style="flex:1"></span>
+        <label class="tog" title="송출 화면에서 소리를 낼 때 켜세요. 재생·타이밍은 그대로입니다"><input type="checkbox" id="optMute"> 이 화면 소리 끄기</label>
         <label class="tog" title="곡이 끝나면 같은 세션의 다음 곡을 자동으로 재생합니다. 세션 마지막 곡이 끝나면 멈춥니다."><input type="checkbox" id="optAuto"> 세션 안에서 연속 재생</label>
         <div id="elsewhere" hidden>지금 재생 중: <b id="elseTitle"></b><span style="flex:1"></span><button data-tp="goto">그 곡으로 이동</button><button data-tp="swap">이 곡으로 바꾸기</button></div>
       </div>
@@ -541,7 +542,7 @@ async function showPlayer(id){
   if(!player){
     player='pending';const t0=trackOf(id);
     await new Promise(res=>{const p=new YT.Player('player',{width:'100%',height:'100%',videoId:id,playerVars:{playsinline:1,rel:0,start:Math.floor(t0?.start||0)},
-      events:{onReady:()=>{player=p;playerId=id;res();},onStateChange:onPState,onError:e=>status('플레이어: '+errMsg(e.data))}});});
+      events:{onReady:()=>{player=p;playerId=id;applyMute();res();},onStateChange:onPState,onError:e=>status('플레이어: '+errMsg(e.data))}});});
     if(autoplayId===id){autoplayId=null;player.playVideo();}
     id=cur();if(!id||id===playerId)return;
   }
@@ -1057,6 +1058,8 @@ function postScreen(force){
   }
 }
 
+function applyMute(){if(!live())return;try{opts.mute?player.mute():player.unMute();}catch(e){}}
+
 /* ---------- 다른 컴퓨터 송출 화면용 서버 연결 ---------- */
 let aws=null,screensN=0,lastRemote='',awsDelay=1000,awsTok='';
 function adminSocket(){
@@ -1263,6 +1266,7 @@ mainEl.addEventListener('input',e=>{
 mainEl.addEventListener('change',e=>{
   const t=trackOf(cur());
   if(e.target.id==='optAuto'){opts.auto=e.target.checked;saveOpts();return;}
+  if(e.target.id==='optMute'){opts.mute=e.target.checked;saveOpts();applyMute();return;}
   if(e.target.id==='optSnap'){opts.snap=e.target.checked;saveOpts();return;}
   if(!t)return;
   if(e.target.dataset.bpm!==undefined){const v=Math.round(+e.target.value*10)/10;t.bpm=v>0?v:null;if(!t.bpm)delete t.beat0;taps=[];tapSong=[];save();renderTrack();return;}
@@ -1391,6 +1395,7 @@ $('#screenKeyNew').onclick=async()=>{
 adminSocket();
 $('#evName').value=state.name;
 $('#optAuto').checked=opts.auto;
+$('#optMute').checked=!!opts.mute;
 if(state.playlistId)$('#plInput').value=state.playlistId;
 if(location.protocol==='file:')$('#warn').hidden=false;
 route();
