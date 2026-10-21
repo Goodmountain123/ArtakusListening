@@ -128,7 +128,7 @@ body.show-ctrl .ctrl{opacity:1}
 <div class="ctrl"><span id="wsState">서버 연결 중…</span><span id="rxCount" hidden></span><span id="ofs"></span><button id="fsBtn">전체화면 (F)</button></div>
 <div class="upd" id="updBar" hidden>새 버전 — 관리자 창과 이 창을 새로고침하세요 (F5)</div>
 <div class="toast" id="toast"></div>
-<div class="link" id="link">관리자 화면 연결 대기 중 — 같은 브라우저에서 관리자 페이지를 열어두세요</div>
+<div class="link" id="link">관리자 화면 연결 대기 중 — 관리자 화면을 열어두세요 (다른 컴퓨터라면 「송출 링크 복사」로 받은 링크로 여세요)</div>
 
 <script>
 const $=s=>document.querySelector(s);
@@ -328,11 +328,23 @@ function showComment(reset){
 }
 
 /* ---------- 관리자 화면에서 오는 신호 (같은 브라우저) ---------- */
-const bc='BroadcastChannel' in window?new BroadcastChannel('lp-screen'):null;
+// 송출 링크(?k=…)로 열면 다른 컴퓨터에서도 서버를 거쳐 관리자 화면을 따라간다
+const SKEY=new URLSearchParams(location.search).get('k')||'';
+function fixImg(u){   // 미공개 곡 썸네일: 관리자 토큰 대신 송출 키로
+  if(!SKEY||!u||!u.startsWith('/img/'))return u;
+  const x=new URL(u,location.origin);x.searchParams.delete('k');x.searchParams.set('sk',SKEY);return x.pathname+x.search;
+}
+function onTrack(track){
+  if(track&&track.img)track={...track,img:fixImg(track.img)};
+  const changed=adminTrack?.id!==track?.id;adminTrack=track;clock.seen=Date.now();
+  if(changed)shownId=null;else buildLyrics();renderInfo();
+}
+let lastBC=0,authBad=false;
+const bc=typeof BroadcastChannel==='function'?new BroadcastChannel('lp-screen'):null;
 if(bc){
   bc.onmessage=e=>{
-    const m=e.data||{};
-    if(m.type==='track'){const changed=adminTrack?.id!==m.track?.id;adminTrack=m.track;clock.seen=Date.now();if(changed)shownId=null;else buildLyrics();renderInfo();}
+    const m=e.data||{};lastBC=Date.now();
+    if(m.type==='track')onTrack(m.track);
     if(m.type==='time'){clock={id:m.id,t:m.t,playing:m.playing,ts:m.ts,seen:Date.now()};}
   };
   bc.postMessage({type:'hello'});
@@ -341,11 +353,15 @@ if(bc){
 /* ---------- 서버 (지금 곡 · 댓글 실시간) ---------- */
 let delay=1000,rxN=0;
 function connect(){
-  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/live');
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/live'+(SKEY?'?role=screen&k='+encodeURIComponent(SKEY):''));
   let ping;
   ws.onopen=()=>{$('#wsState').textContent='● 실시간 연결됨';$('#wsState').style.color='#3ecf8e';delay=1000;ping=setInterval(()=>ws.readyState===1&&ws.send('ping'),25000);};
   ws.onmessage=e=>{
     if(e.data==='pong')return;const m=JSON.parse(e.data);
+    if(m.type==='screen-auth'&&!m.ok){authBad=true;adminTrack=null;clock.seen=0;shownId=null;renderInfo();$('#link').hidden=false;$('#link').textContent='송출 링크가 맞지 않습니다 — 관리자 화면에서 「송출 링크 복사」로 새 링크를 받으세요';}
+    // 같은 컴퓨터의 관리자 창이 직접 보내고 있으면 그쪽이 우선
+    if(m.type==='screen-track'&&!authBad&&Date.now()-lastBC>1500)onTrack(m.track);
+    if(m.type==='screen-time'&&!authBad&&Date.now()-lastBC>1500){const n=Date.now();clock={id:m.id,t:m.t,playing:m.playing,ts:n,seen:n};}
     if(m.type==='state'){
       const n=m.now;
       serverNow=n&&n.mystery?{id:'',mystery:true,session:(()=>{const ss=m.program?.sessions||[],s=ss.find(x=>x.id===n.sid);return s?{num:ss.indexOf(s)+1,name:s.name,desc:s.desc}:null;})()}
@@ -384,7 +400,7 @@ function floatUp(k){
 let wasLinked=false;
 function frame(){
   const l=linked();
-  if(l!==wasLinked){wasLinked=l;$('#link').hidden=l;shownId=null;renderInfo();}
+  if(l!==wasLinked){wasLinked=l;$('#link').hidden=l&&!authBad;shownId=null;renderInfo();}
   const t=track();
   if(t&&isHidden()!==hiddenNow)renderInfo();
   if(t&&t.bg&&t.bgSync&&l&&clock.id===t.id){

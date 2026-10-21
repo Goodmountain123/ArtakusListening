@@ -18,6 +18,7 @@ const REACTIONS = ["heart", "party", "clap", "smile", "dance"];
 const MEDIA_CHUNK = 1_500_000;
 const MEDIA_TYPES = ["video/mp4", "video/webm", "video/quicktime", "video/ogg"];
 const IMG_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const randomKey = () => [...crypto.getRandomValues(new Uint8Array(12))].map((b) => b.toString(16).padStart(2, "0")).join("");
 const str = (v, max) => String(v ?? "").trim().slice(0, max);
 // 보이는 댓글: 숨김 처리 안 됐고, 답글이면 원 댓글도 살아 있어야 한다
 const visibleComments = (list) => {
@@ -74,9 +75,34 @@ export class LiveRoom extends DurableObject {
     if (url.pathname === "/live") {
       if (request.headers.get("Upgrade") !== "websocket") return new Response("WebSocket only", { status: 426 });
       const { 0: client, 1: server } = new WebSocketPair();
-      this.ctx.acceptWebSocket(server);
+      // 관리자(토큰 확인은 Worker에서) · 송출 화면(송출 키) · 참가자
+      const isAdmin = request.headers.get("x-role") === "admin";
+      const wantsScreen = url.searchParams.get("role") === "screen";
+      const isScreen = wantsScreen && url.searchParams.get("k") === (await this.screenKey());
+      const tags = isAdmin ? ["admin"] : isScreen ? ["screen"] : [];
+      this.ctx.acceptWebSocket(server, tags);
       server.send(JSON.stringify({ type: "state", ...(await this.getState()) }));
+      if (wantsScreen) server.send(JSON.stringify({ type: "screen-auth", ok: isScreen }));
+      if (isScreen) {
+        const st = await this.ctx.storage.get("screenTrack");
+        if (st !== undefined) server.send(JSON.stringify({ type: "screen-track", track: st }));
+        this.notifyScreens();
+      }
+      if (isAdmin) server.send(JSON.stringify({ type: "screens", n: this.ctx.getWebSockets("screen").length }));
       return new Response(null, { status: 101, webSocket: client });
+    }
+
+    // ---------- 관리자: 송출 링크 키 ----------
+    if (url.pathname === "/api/screen-key" && method === "GET") {
+      return Response.json({ key: await this.screenKey() });
+    }
+    if (url.pathname === "/api/screen-key" && method === "POST") {
+      const key = randomKey();
+      await this.ctx.storage.put("screenKey", key);
+      const bye = JSON.stringify({ type: "screen-auth", ok: false });
+      for (const ws of this.ctx.getWebSockets("screen")) { try { ws.send(bye); ws.close(4001, "key changed"); } catch {} }
+      this.notifyScreens();
+      return Response.json({ key });
     }
 
     if (url.pathname === "/api/state" && method === "GET") {
@@ -170,7 +196,8 @@ export class LiveRoom extends DurableObject {
       const id = im[1];
       if (method === "GET" && url.pathname.startsWith("/img/")) {
         // 공개된 곡이거나 관리자일 때만 (미공개 곡 이미지 노출 방지)
-        if (request.headers.get("x-admin") !== "1") {
+        const sk = url.searchParams.get("sk");
+        if (request.headers.get("x-admin") !== "1" && !(sk && sk === (await this.screenKey()))) {
           const state = await this.getState();
           if (!state.unlocked.some((t) => t.id === id)) return new Response("Not found", { status: 404 });
         }
@@ -394,12 +421,37 @@ export class LiveRoom extends DurableObject {
     return new Response("Not found", { status: 404 });
   }
 
-  webSocketMessage(ws, message) {
-    if (message === "ping") ws.send("pong");
+  async screenKey() {
+    let k = await this.ctx.storage.get("screenKey");
+    if (!k) { k = randomKey(); await this.ctx.storage.put("screenKey", k); }
+    return k;
+  }
+
+  // 관리자 화면에 지금 연결된 송출 화면 수를 알려준다
+  notifyScreens(leaving) {
+    const n = this.ctx.getWebSockets("screen").filter((x) => x !== leaving).length;
+    const msg = JSON.stringify({ type: "screens", n });
+    for (const ws of this.ctx.getWebSockets("admin")) { try { ws.send(msg); } catch {} }
+  }
+
+  async webSocketMessage(ws, message) {
+    if (message === "ping") { ws.send("pong"); return; }
+    // 관리자 화면 → 송출 화면 중계 (참가자에게는 보내지 않는다)
+    if (!this.ctx.getTags(ws).includes("admin") || typeof message !== "string" || message.length > 200_000) return;
+    let m;
+    try { m = JSON.parse(message); } catch { return; }
+    if (m.type === "screen-track") await this.ctx.storage.put("screenTrack", m.track ?? null);
+    if (m.type !== "screen-track" && m.type !== "screen-time") return;
+    for (const s of this.ctx.getWebSockets("screen")) { try { s.send(message); } catch {} }
   }
 
   webSocketClose(ws, code) {
+    if (this.ctx.getTags(ws).includes("screen")) this.notifyScreens(ws);
     try { ws.close(code, "bye"); } catch {}
+  }
+
+  webSocketError(ws) {
+    if (this.ctx.getTags(ws).includes("screen")) this.notifyScreens(ws);
   }
 }
 
@@ -420,11 +472,22 @@ export default {
       return env.LIVE.get(env.LIVE.idFromName("main")).fetch(new Request(request.url, { method: "GET", headers }));
     }
 
-    if (url.pathname === "/live" || url.pathname.startsWith("/api/")) {
+    // 실시간 연결: 관리자 역할은 Worker가 토큰으로 확인해 표시한다 (밖에서 넣은 표시는 지움)
+    if (url.pathname === "/live") {
+      const headers = new Headers(request.headers);
+      headers.delete("x-role");
+      if (url.searchParams.get("role") === "admin") {
+        if (!env.ADMIN_TOKEN || url.searchParams.get("k") !== env.ADMIN_TOKEN) return new Response("관리자 토큰이 맞지 않습니다", { status: 401 });
+        headers.set("x-role", "admin");
+      }
+      return env.LIVE.get(env.LIVE.idFromName("main")).fetch(new Request(request.url, { method: "GET", headers }));
+    }
+
+    if (url.pathname.startsWith("/api/")) {
       // 상태를 바꾸는 요청과 행사 파일은 관리자 토큰 필요
       // 별점·댓글 작성은 참가자도 가능
       const participantWrite = request.method === "POST" && ["/api/rate", "/api/comment", "/api/like", "/api/react"].includes(url.pathname);
-      const needsToken = url.pathname.startsWith("/api/events") || url.pathname.startsWith("/api/media") || (request.method !== "GET" && !participantWrite);
+      const needsToken = url.pathname.startsWith("/api/events") || url.pathname.startsWith("/api/media") || url.pathname === "/api/screen-key" || (request.method !== "GET" && !participantWrite);
       if (needsToken) {
         const token = request.headers.get("x-admin-token");
         if (!env.ADMIN_TOKEN || token !== env.ADMIN_TOKEN) {

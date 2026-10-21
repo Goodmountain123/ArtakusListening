@@ -208,6 +208,7 @@ dialog h3{margin:0 0 12px;font-size:15px}
   <input id="tokenInput" type="password" placeholder="관리자 토큰" style="width:130px">
   <button id="resetBtn" title="공개된 곡·별점·댓글을 모두 지웁니다 (리허설 후)">공개 초기화</button>
   <button id="screenBtn" title="같은 브라우저의 새 창으로 엽니다. 전체화면은 송출 창에서 F">송출 화면 ↗</button>
+  <button id="screenLinkBtn" title="다른 컴퓨터에서 열 송출 화면 링크를 복사합니다">송출 링크 복사</button>
   <a class="btn" href="/" target="_blank" style="text-decoration:none">참가자 화면 ↗</a>
 </header>
 <div class="warnbar" id="updBar" hidden>새 버전이 배포됐습니다. 송출 화면과 함께 쓰려면 이 창도 새로고침해야 합니다. <button onclick="location.reload()" style="margin-left:8px">지금 새로고침</button> <span class="mut" style="font-size:12px">(입력한 내용은 저장돼 있습니다)</span></div>
@@ -262,6 +263,7 @@ dialog h3{margin:0 0 12px;font-size:15px}
   <div id="evList" class="mut">불러오는 중…</div>
   <div class="row" style="margin-top:14px;flex-wrap:wrap">
     <button class="primary" id="evNew">+ 새 행사</button>
+    <button id="screenKeyNew" title="지금까지 나눠준 송출 링크를 모두 끊고 새 링크를 만듭니다">송출 링크 바꾸기</button>
     <button id="evExport">파일로 내보내기</button>
     <label class="btn" style="margin:0;font-size:13px;color:var(--text)">파일 가져오기<input type="file" id="importInput" accept=".json" hidden></label>
     <button id="csvBtn">타임코드 CSV</button>
@@ -611,9 +613,11 @@ async function publish(t,auto){
     status(`${auto?'재생 시작 → ':''}"${t.title||t.ytTitle}" 공개됨 · 접속 ${r.listeners}명`);refreshLive();
   }catch(e){status('공개 실패: '+e.message);if(auto)lastPub=null;}
 }
+let liveTxt='';
+function paintLive(){$('#liveInfo').textContent=liveTxt+(screensN?` · 다른 컴퓨터 송출 ${screensN}대`:'');}
 async function refreshLive(){
   if(location.protocol==='file:')return;
-  try{const s=await (await fetch('/api/state')).json();$('#liveInfo').textContent=`공개 ${s.unlocked.length}곡 · 접속 ${s.listeners}명`;}catch(e){}
+  try{const s=await (await fetch('/api/state')).json();liveTxt=`공개 ${s.unlocked.length}곡 · 접속 ${s.listeners}명`;paintLive();}catch(e){}
 }
 $('#resetBtn').onclick=async()=>{
   if(!confirm('참가자 앱에 공개된 곡을 모두 다시 잠그고, 별점·댓글도 지웁니다. 리허설 후에 쓰세요. 계속할까요?'))return;
@@ -1026,7 +1030,7 @@ function syncVideo(v,target,playing){
 }
 
 /* ---------- 송출 화면과 연결 (같은 브라우저의 다른 창) ---------- */
-const bc='BroadcastChannel' in window?new BroadcastChannel('lp-screen'):null;
+const bc=typeof BroadcastChannel==='function'?new BroadcastChannel('lp-screen'):null;
 let lastScreen='',screenTick=0;
 function screenTrack(t){
   const s=sessionOf(t.id);
@@ -1040,10 +1044,41 @@ function screenTrack(t){
     dur:tlDur(t)||0};
 }
 function postScreen(force){
-  if(!bc)return;
   const pt=trackOf(playerId),j=pt?JSON.stringify(screenTrack(pt)):'null';
-  if(force||j!==lastScreen){lastScreen=j;bc.postMessage({type:'track',track:JSON.parse(j)});}
-  bc.postMessage({type:'time',id:playerId,t:ptime()||0,playing:pstate()===1,ts:Date.now()});
+  const time={id:playerId,t:ptime()||0,playing:pstate()===1};
+  if(bc){
+    if(force||j!==lastScreen){lastScreen=j;bc.postMessage({type:'track',track:JSON.parse(j)});}
+    bc.postMessage({type:'time',...time,ts:Date.now()});
+  }
+  // 다른 컴퓨터의 송출 화면: 서버를 거쳐서 (연결된 송출 화면이 있을 때만)
+  if(aws&&aws.readyState===1&&screensN>0){
+    if(j!==lastRemote){lastRemote=j;aws.send(`{"type":"screen-track","track":${j}}`);}
+    aws.send(JSON.stringify({type:'screen-time',...time}));
+  }
+}
+
+/* ---------- 다른 컴퓨터 송출 화면용 서버 연결 ---------- */
+let aws=null,screensN=0,lastRemote='',awsDelay=1000,awsTok='';
+function adminSocket(){
+  if(location.protocol==='file:'||!token())return;
+  if(aws&&awsTok===token()&&aws.readyState<2)return;
+  try{aws&&aws.close();}catch(e){}
+  awsTok=token();
+  const ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host+'/live?role=admin&k='+encodeURIComponent(awsTok));
+  aws=ws;let ping;
+  ws.onopen=()=>{awsDelay=1000;lastRemote='';ping=setInterval(()=>ws.readyState===1&&ws.send('ping'),25000);};
+  ws.onmessage=e=>{if(e.data==='pong')return;let m;try{m=JSON.parse(e.data);}catch(err){return;}
+    if(m.type==='screens'){if(m.n>screensN)lastRemote='';screensN=m.n;paintLive();}};
+  ws.onclose=()=>{clearInterval(ping);if(aws!==ws)return;screensN=0;paintLive();setTimeout(adminSocket,awsDelay);awsDelay=Math.min(awsDelay*2,30000);};
+}
+async function copyScreenLink(){
+  if(!token())return status('송출 링크를 만들려면 관리자 토큰이 필요합니다');
+  try{
+    const {key}=await api('/api/screen-key');
+    const url=`${location.origin}/screen/?k=${key}`;
+    try{await navigator.clipboard.writeText(url);status('송출 링크를 복사했습니다. 다른 컴퓨터에서 이 링크를 열면 됩니다');}
+    catch(e){prompt('송출 링크 — 복사해서 다른 컴퓨터에서 여세요',url);}
+  }catch(e){status('송출 링크 실패: '+e.message);}
 }
 if(bc)bc.onmessage=e=>{if(e.data?.type==='hello')postScreen(true);};
 $('#screenBtn').onclick=()=>{const w=window.open('/screen/','lp-screen','popup,width=1280,height=720');if(!w)status('팝업이 막혔습니다. 주소창의 팝업 허용을 눌러주세요');};
@@ -1347,7 +1382,13 @@ function route(){renderSide();renderTrack();}
 window.addEventListener('hashchange',route);
 try{$('#keyInput').value=localStorage.getItem(LS+'_key')||'';$('#tokenInput').value=localStorage.getItem(LS+'_admin')||'';}catch(e){}
 let tokT;
-$('#tokenInput').addEventListener('input',()=>{try{localStorage.setItem(LS+'_admin',token());}catch(e){}clearTimeout(tokT);tokT=setTimeout(checkServer,600);});
+$('#tokenInput').addEventListener('input',()=>{try{localStorage.setItem(LS+'_admin',token());}catch(e){}clearTimeout(tokT);tokT=setTimeout(()=>{checkServer();adminSocket();},600);});
+$('#screenLinkBtn').onclick=copyScreenLink;
+$('#screenKeyNew').onclick=async()=>{
+  if(!confirm('지금까지 나눠준 송출 링크가 모두 끊깁니다. 새 링크를 만들까요?'))return;
+  try{await api('/api/screen-key','POST');await copyScreenLink();}catch(e){status('실패: '+e.message);}
+};
+adminSocket();
 $('#evName').value=state.name;
 $('#optAuto').checked=opts.auto;
 if(state.playlistId)$('#plInput').value=state.playlistId;
