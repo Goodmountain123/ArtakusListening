@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Artakus · 오디오 출력 설정</title>
+<style>
+:root{color-scheme:dark;font:15px system-ui,sans-serif;background:#111;color:#eee}body{max-width:660px;margin:48px auto;padding:0 20px}h1{font-size:24px}p,li{line-height:1.65;color:#bbb}section{background:#1c1c1c;border:1px solid #373737;border-radius:10px;padding:20px;margin:16px 0}button,select{font:inherit;color:inherit;background:#292929;border:1px solid #555;border-radius:6px;padding:10px;max-width:100%}select{width:100%;margin:10px 0}button{cursor:pointer;margin:4px 4px 4px 0}button:disabled{opacity:.45;cursor:default}.primary{background:#e8e8e8;color:#111}#status{min-height:48px;white-space:pre-wrap;color:#ddd}.hint{font-size:13px}audio{display:none}
+</style></head><body>
+<h1>오디오 출력 설정</h1>
+<p>관리자 탭의 음악을 이 탭에서 받아 선택한 스피커로 전달합니다. Chrome 또는 Edge 데스크톱에서 사용하세요.</p>
+<section><label for="output">출력 장치</label><select id="output"><option value="">시스템 기본 출력</option></select>
+<button id="refresh">장치 새로고침</button><button id="permit">다른 장치 표시 / 권한 허용</button>
+<p class="hint">HDMI 디스플레이, 내장 스피커, Bluetooth 스피커 등을 컴퓨터에 먼저 연결하세요. 브라우저에 따라 장치 목록을 표시하려면 마이크 접근 권한이 필요할 수 있습니다. 이 경우 마이크는 목록 확인 직후 종료되며, 녹음하거나 전송하지 않습니다.</p></section>
+<section><button class="primary" id="start">관리자 탭 오디오 연결</button><button id="stop" disabled>연결 해제</button>
+<p id="status" role="status" aria-live="polite">연결되지 않음</p>
+<ol><li>관리자 화면의 ‘이 화면 소리 끄기’는 해제하고, 송출 화면의 소리는 끄세요.</li><li>위에서 출력 장치를 선택한 뒤 ‘관리자 탭 오디오 연결’을 누르세요.</li><li>브라우저 공유 창에서 관리자 Chrome 탭을 선택하고 ‘탭 오디오 공유’를 켜세요. 이 설정 탭이나 전체 화면을 선택하지 마세요.</li><li>이 설정 탭을 닫지 말고 관리자 화면에서 평소처럼 재생하세요.</li></ol>
+<p class="hint">오디오는 이 컴퓨터 안에서만 전달되며 녹음·저장·서버 전송하지 않습니다. 연결 해제 시 원래 탭의 시스템 기본 출력이 복원됩니다. Bluetooth 및 탭 캡처에 따른 지연이 있을 수 있습니다.</p></section>
+<audio id="audio" autoplay></audio>
+<script>
+'use strict';
+const $=id=>document.getElementById(id), audio=$('audio'), out=$('output'), md=navigator.mediaDevices;
+let capture=null,busy=false;
+const supported=!!(window.isSecureContext&&md?.getDisplayMedia&&md?.getSupportedConstraints?.().suppressLocalAudioPlayback&&typeof audio.setSinkId==='function');
+function status(s){$('status').textContent=s;}
+function controls(){ $('start').disabled=!supported||busy||!!capture;$('stop').disabled=busy||!capture;out.disabled=!supported||busy;$('refresh').disabled=!supported||busy;$('permit').disabled=!supported||busy; }
+async function refresh(){const selected=out.value;const ds=await md.enumerateDevices();out.replaceChildren(new Option('시스템 기본 출력',''));let n=0;for(const d of ds){if(d.kind!=='audiooutput'||!d.deviceId||d.deviceId==='default')continue;out.add(new Option(d.label||'출력 장치 '+(++n),d.deviceId));}if([...out.options].some(o=>o.value===selected))out.value=selected;else if(selected&&capture){disconnect('선택한 장치가 분리되었습니다. 원래 출력으로 돌아갑니다.');}return ds;}
+function disconnect(message='연결 해제 · 원래 탭의 출력으로 복원됨'){const old=capture;capture=null;audio.pause();audio.srcObject=null;old?.getTracks().forEach(t=>t.stop());status(message);controls();}
+async function changeOutput(id){await audio.setSinkId(id);if(capture)status('연결됨 · '+out.selectedOptions[0].textContent);}
+out.onchange=async()=>{try{await changeOutput(out.value);}catch(e){out.value=[...out.options].some(o=>o.value===audio.sinkId)?audio.sinkId:'';status('출력 변경 실패: '+e.message);}};
+$('refresh').onclick=()=>refresh().catch(e=>status('장치 조회 실패: '+e.message));
+$('permit').onclick=async()=>{busy=true;controls();let mic;try{if(typeof md.selectAudioOutput==='function'){const d=await md.selectAudioOutput();await refresh();if(![...out.options].some(o=>o.value===d.deviceId))out.add(new Option(d.label||'선택한 출력 장치',d.deviceId));out.value=d.deviceId;await changeOutput(d.deviceId);}else{mic=await md.getUserMedia({audio:true,video:false});await refresh();}if(!capture)status('장치 목록을 확인하세요.');}catch(e){status('장치 권한 또는 선택 실패: '+e.message);}finally{mic?.getTracks().forEach(t=>t.stop());busy=false;controls();}};
+$('start').onclick=async()=>{if(!supported||busy||capture)return;busy=true;controls();let stream;try{
+stream=await md.getDisplayMedia({video:{displaySurface:'browser'},audio:{suppressLocalAudioPlayback:true,echoCancellation:false,noiseSuppression:false,autoGainControl:false},selfBrowserSurface:'exclude',systemAudio:'exclude',surfaceSwitching:'exclude',monitorTypeSurfaces:'exclude'});
+const v=stream.getVideoTracks()[0],a=stream.getAudioTracks()[0];
+if(!v||v.getSettings().displaySurface!=='browser'||!a)throw Error('관리자 브라우저 탭과 탭 오디오 공유를 선택하세요.');
+if(a.getSettings().suppressLocalAudioPlayback!==true)throw Error('원래 탭 소리 차단이 지원되지 않습니다. 중복 재생을 막기 위해 연결하지 않습니다.');
+capture=stream;for(const t of stream.getTracks())t.addEventListener('ended',()=>{if(capture===stream)disconnect('탭 공유가 종료되었습니다. 원래 출력으로 돌아갑니다.');},{once:true});
+await audio.setSinkId(out.value);audio.srcObject=new MediaStream([a]);await audio.play();
+if(capture===stream)status('연결됨 · '+out.selectedOptions[0].textContent);
+}catch(e){stream?.getTracks().forEach(t=>t.stop());disconnect('연결 실패: '+e.message);}finally{busy=false;controls();}};
+$('stop').onclick=()=>disconnect();
+window.addEventListener('pagehide',()=>{capture?.getTracks().forEach(t=>t.stop());});
+md?.addEventListener?.('devicechange',()=>{if(supported)refresh().catch(()=>{});});
+controls();if(supported)refresh().catch(e=>status('장치 조회 실패: '+e.message));else status('이 브라우저에서는 출력 장치 지정이 지원되지 않습니다. Chrome/Edge 최신 버전 또는 운영체제 사운드 설정을 사용하세요.');
+</script></body></html>
